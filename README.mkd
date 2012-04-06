@@ -1,0 +1,131 @@
+Creating a Sphinx charset_table from a MySQL Collation
+=====
+
+I have an application that deals with music metadata from all over the world and
+I therefore use Unicode. I want a search function that native English speakers can
+use without understanding accents and diacriticals from other languages. MySQL’s
+utf8_general_ci is ideal. For example the letter “A” in a search key matches any
+of these:
+
+```
+A,a,À,Á,Â,Ã,Ä,Å,à,á,â,ã,ä,å,Ā,ā,Ă,ă,Ą,ą
+```
+
+The search uses SphinxSearch so I want to configure it to use character matching
+tables that are compatible utf8_general_ci. Sphinx’s charset_table allows any
+character folding to be configured but it isn’t going to be trivial to write down
+all the rules.
+
+How can this be automated?
+-----
+
+The basic idea is that you can dump out any of MySQL’s collations by populating a
+`CHAR(1)` column with every character you care about and
+
+```sql
+SELECT GROUP_CONCAT(mychar) FROM mytable GROUP BY mychar
+```
+
+The output of which can then be procesed into charset_table rules for a Sphinx config file.
+
+I broke the process into three steps:
+
+* A script generates a human-readable file describing the collation rules
+* Manually edit the file to define the exact rules I want Sphinx to use
+* A second script turns the edited file into a charset_table definiton
+
+The first script takes as input specification of a MySQL utf8 collation and a numeric
+range of Unicode code points. It creates the table, populates it, runs the SELECT
+query (in the style above) to generate the human-readable output file. For example,
+if it is working on utf8_general_ci from 0x20 to 0x17f then it would look like this:
+
+
+	 ⇥0020
+	!⇥0021
+	"⇥0022
+	#⇥0023
+	$⇥0024
+	%⇥0025
+
+…
+
+	=⇥003d
+	>⇥003e
+	?⇥003f
+	@⇥0040
+	A,a,À,Á,Â,Ã,Ä,Å,à,á,â,ã,ä,å,Ā,ā,Ă,ă,Ą,ą⇥0041,0061,00c0,00c1,00c2,00c3,0c4,00c5,00e0,00e1,00e2,00e3,00e4,00e5,0100,0101,0102,0103,0104,0105
+	B,b⇥0042,0062
+	C,c,Ç,ç,Ć,ć,Ĉ,ĉ,Ċ,ċ,Č,č⇥0043,0063,00c7,00e7,0106,0107,0108,0109,010a,010b,010c,010d
+	D,d,Ď,ď⇥0044,0064,010e,010f
+
+…
+
+	W,w,Ŵ,ŵ⇥0057,0077,0174,0175
+	X,x⇥0058,0078
+	Y,y,Ý,ý,ÿ,Ŷ,ŷ,Ÿ⇥0059,0079,00dd,00fd,00ff,0176,0177,0178
+	Z,z,Ź,ź,Ż,ż,Ž,ž⇥005a,007a,0179,017a,017b,017c,017d,017e
+	[⇥005b
+	\⇥005c
+	]⇥005d
+	^⇥005e
+
+…
+
+	Ł,ł⇥0141,0142
+	ŉ⇥0149
+	Ŋ,ŋ⇥014a,014b
+	Œ,œ⇥0152,0153
+	Ŧ,ŧ⇥0166,0167
+	µ⇥00b5
+
+Each line in the file repesents a set of characters the collation treats as equivalent.
+A line has one or more characters (comma separated) followed by a tab followed by
+those characters’ respective Unicode codepoints.
+
+With an understanding of how the second script works, I can edit the file to get the
+Sphinx charset_table rules I want.
+
+A line with only one character will be translated to a singleton (ie. terminal) character
+in the charset_table. For example in the last line above, **µ** will become
+“U+00b5” standing on its own in the charset_table with “-&gt;” neither before nor after
+it.
+
+A line with two or more charcters does two things. First, the leftmost character in the
+set will become a singleton. Then all the characters to the right of the first character
+will be folded to that first character. For example, take the line:
+
+```
+D,d,Ď,ď  0044,0064,010e,010f
+```
+
+This will produce the following charset_table rules:
+
+```
+U+0044, U+0064->U+0044, U+010e->U+0044, U+010f->U+0044
+```
+
+When I was editing my file I first reviewed the folding rules (the lines with more than
+one character) to see that they made sense. Then I carefully thought about all the
+characters I didn’t want Sphinx to index at all and deleted those lines from the file.
+For example, in a song’s artist name field I want **!**, **'**,
+**’** indexed but not **"**, **$** or
+**?**. Finally, thiking about the equivalence of “O'brien” and “O’brien”,
+I replaced the singleton **'** line with this:
+
+```
+',’   0027,2019
+```
+
+The second script then reads the edited file and generates the rules as I described.
+
+Feel free to play with the scripts. The output
+of the first can be piped into the second but I feel that the manual editing of the
+intermediate file is important.
+
+License
+-----
+
+MySQL collation to Sphinx charset_table conversion by tom-- is licensed
+under a [Creative Commons Attribution-ShareAlike 3.0 Unported License](http://creativecommons.org/licenses/by-sa/3.0/).
+
+![Creative Commons License](http://i.creativecommons.org/l/by-sa/3.0/88x31.png)
