@@ -16,14 +16,7 @@ tables that are compatible utf8_general_ci. Sphinx’s charset_table allows any
 character folding to be configured but it isn’t going to be trivial to write down
 all the rules.
 
-*Special note: I wrote this long before Sphinx 2 came along. 2.0.1-beta introduced
-support for [collations](http://sphinxsearch.com/docs/2.0.4/collations.html) and
-utf8_general_ci in particular. I would
-think that in many situations it would suffice to use that rather than resort to this
-method for creating a custom charset_table. If you are still on 1.9.[789] then this
-should work just as well as Sphinx 2's built-in collation. And Sphinx 2 users may
-still benefit from this method as it allows customization of the collation. I give
-examples of the customizations I used below.*
+
 
 
 How can this be automated?
