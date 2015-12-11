@@ -2,9 +2,16 @@
 /*
  * Copyright (c) 2012, Tom Worster <fsb@thefsb.org>
  *
- * Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+ * Permission to use, copy, modify, and/or distribute this software for any purpose with
+ * or without fee is hereby granted, provided that the above copyright notice and this
+ * permission notice appear in all copies.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD
+ * TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN
+ * NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 /**
@@ -21,11 +28,13 @@
  *
  * @var string[] Array of hex ranges as strings
  */
+
 $ranges = array(
-	'0000-02AF',
-	'0370-058F',
-	'10A0-10FF',
-	'1E00-1FFF',
+    ['0000', '02AF'],
+    ['0370', '058F'],
+    ['10A0', '10FF'],
+    ['1E00', '1FFF'],
+    ['1F300', '1F77F'],
 );
 /**
  * @var string Name of the working database to use for processing.
@@ -36,71 +45,81 @@ $dbname = 'my_collation_db';
  */
 $tablename = 'my_table';
 /**
- * @var string Collation to use (utf8 only)
+ * @var string MySQL charset name, either utf8 or utf8mb4
  */
-$collation = 'utf8_general_ci';
+$charset = 'utf8mb4';
+/**
+ * @var string Collation to use with the charset
+ */
+$collation = 'utf8mb4_general_ci';
 /**
  * @var string PDO DSN
  */
-$pdo_dsn = 'mysql:unix_socket=/tmp/mysql.sock';
+$pdoDsn = 'mysql:host=127.0.0.1';
 /**
  * @var string MySQL user name
  */
-$pdo_user = 'root';
+$mysqlUser = 'user';
 /**
  * @var string MySQL password
  */
-$pdo_pass = prompt_silent('MySQL password for use: ');
+$mysqlPass = 'password';
 /*
  * END OF USER CONFIGURATIONS
  * ============================================================================
  */
 
-
 ini_set('default_charset', 'UTF-8');
 
-$db = new PDO($pdo_dsn, $pdo_user, $pdo_pass);
-$db->query("SET NAMES 'utf8' COLLATE '$collation';");
-$db->query("DROP DATABASE IF EXISTS `$dbname`;");
-$db->query("CREATE DATABASE `$dbname` DEFAULT CHARACTER SET utf8 COLLATE $collation;");
-$db->query("USE $dbname;");
-$db->query(
-	"CREATE TABLE IF NOT EXISTS `$tablename` (
-		  `dec` int(11) NOT NULL,
-		  `mychar` char(1) NOT NULL,
-		  `hex` char(4) NOT NULL,
-		  PRIMARY KEY  (`dec`)
-		) ENGINE=MyISAM DEFAULT CHARSET=utf8;"
+function myPdoError(PDO $db, $query)
+{
+    fwrite(STDERR, 'PDO eorror: (' . $db->errorCode() . ') ' . var_export($db->errorInfo(), true) . "\n");
+    fwrite(STDERR, 'Doing: ' . var_export($query, true) . "\n");
+
+    exit(1);
+}
+
+function myQuery(PDO $db, $query)
+{
+    $result = $db->query($query);
+    if ($result === false) {
+        myPdoError($db, $query);
+    }
+
+    return $result;
+}
+
+$db = new PDO($pdoDsn, $mysqlUser, $mysqlPass);
+myQuery($db, "SET NAMES $charset COLLATE $collation");
+myQuery($db, "DROP DATABASE IF EXISTS `$dbname`");
+myQuery($db, "CREATE DATABASE `$dbname`");
+myQuery($db, "USE $dbname");
+
+myQuery($db,
+    "CREATE TABLE `$tablename` (
+        `dec` int NOT NULL,
+        `mychar` char(1) CHARACTER SET $charset COLLATE $collation NOT NULL,
+        `hex` varchar(8) NOT NULL,
+        PRIMARY KEY  (`dec`)
+    ) ENGINE=MyISAM;"
 );
 
-// The SQL insert clauses without data
-$ins = "INSERT IGNORE INTO `$tablename` (`dec`, `mychar`, `hex`) VALUES ";
-
-// Get the max MySQL packet size
-$max_data_per_packet = $db->query("SELECT @@session.max_allowed_packet;")->fetch();
-
-// Figure the max number of data bytes per MySQL packet
-$max_data_per_packet = $max_data_per_packet[0] - 2 * mb_strlen($ins, 'ISO-8859-1');
-$rows_per_insert = $max_data_per_packet / 70;
+$statement = $db->prepare(
+    "INSERT IGNORE INTO `$tablename` (`dec`, `hex`, `mychar`) VALUES (:dec, :hex, :mychar)"
+);
+$statement->bindParam(':dec', $dec);
+$statement->bindParam(':hex', $hex);
+$statement->bindParam(':mychar', $mychar);
 
 // Add a row to the working table for every Unicode char in the ranges specified
-$s = array();
 foreach ($ranges as $range) {
-	if (preg_match('/^([0-9A-F]{1,6})-([0-9A-F]{1,6})$/i',
-		$range, $m)
-	) {
-		for ($i = "0x{$m[1]}"; $i <= "0x{$m[2]}"; ++$i) {
-			$hex = sprintf('%04x', $i);
-			$s[] = "($i, CAST(_ucs2 x'$hex' AS CHAR CHARACTER SET utf8), '$hex')";
-			if (count($s) >= $rows_per_insert) {
-				$db->query($e = $ins . implode(',', $s) . ";");
-				$s = array();
-			}
-		}
-	}
-}
-if ($s) {
-	$db->query($e = $ins . implode(',', $s) . ";");
+    for ($dec = "0x{$range[0]}"; $dec <= "0x{$range[1]}"; $dec += 1) {
+        $hex = sprintf('%04x', $dec);
+        $mychar = mb_convert_encoding(hex2bin(sprintf('%08x', $dec)), 'UTF-8', 'UTF-32BE');
+        if ($statement->execute() === false) {
+            myPdoError($db, $statement);
+        }
+    }
 }
 
 // Now the interesting bit. Use mysql's GROUP BY to group rows of characters
@@ -108,50 +127,16 @@ if ($s) {
 // collation considers equivalent as:
 //	  x: a comma separated list of utf8 characters
 //	  y: a comma separated list of hex unicode codepoints
-$r = $db->query(
-	"SELECT GROUP_CONCAT(`mychar` ORDER BY `dec` ASC SEPARATOR ',') AS x,
-		GROUP_CONCAT(`hex` ORDER BY `dec` ASC SEPARATOR ',') AS y
-		FROM $tablename GROUP BY `mychar`;"
+$r = myQuery($db,
+    "SELECT GROUP_CONCAT(`mychar` ORDER BY `dec` ASC SEPARATOR ',') AS x,
+            GROUP_CONCAT(`hex`    ORDER BY `dec` ASC SEPARATOR ',') AS y
+    FROM $tablename GROUP BY `mychar`;"
 );
 
 // For each grouped set, write to stdout each column x and y as two comma-
 // separated lists with a tab in between
 if ($r) {
-	foreach ($r as $row) {
-		print($row['x'] . "\t" . $row['y'] . "\n");
-	}
-}
-
-
-/**
- * Interactively prompts for input without echoing to the terminal.
- * Requires a bash shell or Windows and won't work with
- * safe_mode settings (Uses `shell_exec`)
- * @param string @prompt password entry prompt
- * @return mixed|string the interactively entered password
- */
-function prompt_silent($prompt = "Enter Password:") {
-	if (preg_match('/^win/i', PHP_OS)) {
-		$vbscript = sys_get_temp_dir() . 'prompt_password.vbs';
-		file_put_contents(
-			$vbscript, 'wscript.echo(InputBox("'
-			. addslashes($prompt)
-			. '", "", "password here"))');
-		$command = "cscript //nologo " . escapeshellarg($vbscript);
-		$password = rtrim(shell_exec($command));
-		unlink($vbscript);
-		return $password;
-	} else {
-		$command = "/usr/bin/env bash -c 'echo OK'";
-		if (rtrim(shell_exec($command)) !== 'OK') {
-			trigger_error("Can't invoke bash");
-			return false;
-		}
-		$command = "/usr/bin/env bash -c 'read -s -p \""
-			. addslashes($prompt)
-			. "\" mypassword && echo \$mypassword'";
-		$password = rtrim(shell_exec($command));
-		echo "\n";
-		return $password;
-	}
+    foreach ($r as $row) {
+        print($row['x'] . "\t" . $row['y'] . "\n");
+    }
 }
