@@ -17,23 +17,19 @@
 /**
  * @var string The first line of output
  */
-$startswith = "\tcharset_table = ";
+$startswith = "    charset_table = ";
 /**
  * @var int Limit num. chars per output line
  */
-$linewidth = 100;
+$linewidth = 120;
 /**
- * @var int How wide are your tabs?
+ * @var int Spaces to indent a continuation line
  */
-$tabwidth = 8;
+$indent = 8;
 /**
- * @var int Num. tabs to indent a continuation line
+ * Minimun number of hex chars in each codepoint in output.
  */
-$tabsindent = 2;
-/**
- * @var int Min. num. hex digits per codepoint literal
- */
-$padto = 4;
+$codePointDigits = 2;
 /*
  * END OF USER CONFIGURATIONS
  * ============================================================================
@@ -42,9 +38,7 @@ $padto = 4;
 ini_set('default_charset', 'UTF-8');
 ini_set('mbstring.func_overload', 0);
 
-// Figure  from config useful values for data output
-$leadstr = str_repeat("\t", $tabsindent);
-$leadwidth = $tabsindent * ($tabwidth);
+$excludeRanges = require(__DIR__ . '/range_config.php');
 
 /**
  * Convert hex string to Sphinx Unicode code point literal.
@@ -58,115 +52,114 @@ $leadwidth = $tabsindent * ($tabwidth);
  */
 function u($codePoint)
 {
-    global $padto;
+    global $codePointDigits;
 
-    return preg_match('/[1-9a-fA-F][0-9a-fA-F]*$/', $codePoint, $m)
-        ? 'U+' . str_pad($m[0], $padto, "0", STR_PAD_LEFT)
-        : $codePoint;
+    if (is_integer($codePoint)) {
+        return sprintf('U+%0' . $codePointDigits . 'x', $codePoint);
+    }
+
+    if (preg_match('{[0-9a-f]{1,6}$}i', $codePoint, $match)) {
+        return sprintf('U+%0' . $codePointDigits . 'x', hexdec($match[0]));
+    }
+
+    return $codePoint;
 }
 
-// Read lines from stdin until eof
-while (!feof(STDIN)) {
-    $lines[] = fgets(STDIN);
+/** @var array[] Sets of characters collated with equal value, to be folded by Sphinx */
+$sets = [];
+/** @var array Terminal characters Sphinx will actually index*/
+$terminals = [];
+/** @var array $includes */
+$includes = [];
+/** string $output formatted charset_table elements */
+$output = [];
+
+// From the $ranges configuration, figure the ranges to include without collation.
+$excludeRanges = array_merge($excludeRanges['collate'], $excludeRanges['exclude']);
+foreach ($excludeRanges as $i => $range) {
+    $excludeRanges[$i][0] = is_integer($range[0]) ? $range[0] : hexdec($range[0]);
+    $excludeRanges[$i][1] = is_integer(end($range)) ? end($range) : hexdec(end($range));
+    sort($excludeRanges[$i]);
 }
-if (!$lines) {
-    exit();
+sort($excludeRanges);
+
+$includeFrom = 0;
+foreach ($excludeRanges as $range) {
+    if ($range[0] > $includeFrom) {
+        $includes[] = $includeFrom === $range[0] - 1 ? [$includeFrom] : [$includeFrom, $range[0] - 1];
+    }
+    if ($range[1] >= $includeFrom) {
+        $includeFrom = $range[1] + 1;
+    }
 }
 
-/**
- * @var array[] Sets of characters collated with equal value, to be folded by Sphinx
- */
-$sets = array();
-/**
- * @var string[] Terminal characters Sphinx will actually index
- */
-$singles = array();
+$includeTo = hexdec('10FFFF');
+$next = end($excludeRanges);
+$next = end($next) + 1;
+if ($next <= $includeTo) {
+    $includes[] = $next === $includeTo ? [$includeTo] : [$includeFrom, $includeTo];
+}
 
 // parse each input line
-foreach ($lines as $line) {
+foreach (file('php://stdin') as $line) {
     // search each input line for a tab character
-    if (preg_match('/^(.+)\t(.+)$/u', $line, $m)) {
-        // if the part after the tab on the unput line is ...
-        if (preg_match('/^[0-9a-f]{1,5}$/', $m[2])) {
+    if (preg_match('/\t(.+)\s?$/u', $line, $m)) {
+        // if the part after the tab ...
+        if (preg_match('/^[0-9a-f]{1,5}$/', $m[1])) {
             // ... a single hex codepoint then it's a singleton,
             // add it to the list of singles
-            $singles[] = '0x' . $m[2];
-        } elseif (preg_match('/^[0-9a-f]{1,5}(,[0-9a-f]{1,5})+$/', $m[2])) {
+            $includes[] = [hexdec($m[1])];
+        } elseif (preg_match('/^[0-9a-f]{1,5}(,[0-9a-f]{1,5})+$/', $m[1])) {
             // ... a comma separatred list of codepoints,
             // it's a set of chars to be folded to the frst of them,
             // split it and add to the list of sets
-            $sets[] = preg_split('/,/', $m[2]);
+            $set = array_map('hexdec', explode(',', $m[1]));
+            $includes[] = [$set[0]];
+            $sets[] = $set;
         }
     }
 }
 
-// add the folding targets to singles
-foreach ($sets as $codes) {
-    $singles[] = '0x' . $codes[0];
-}
-
-// encode the rules for sphinx.
-// do the singles (folding targets) first
-sort($singles);
-
-// run detection state machine var
-$run = false;
-
-// collect folding rules in $t
-$t = array();
-
-// $s is an output string
-$s = u($singles[0]);
-for ($i = 1; $i < count($singles) - 1; $i++) {
-    // detect runs of consecutive codeponts and use
-    // Sphinx's .. notation, e.g.: 'U+041..U+05A'
-    if ($run) {
-        if ($singles[$i] != $singles[$i + 1] - 1) {
-            $s .= ".." . u($singles[$i]);
-            $run = false;
+sort($includes);
+$combined = [array_shift($includes)];
+$i = 0;
+foreach ($includes as $include) {
+    if ($include[0] <= end($combined[$i]) + 1) {
+        if (end($include) > end($combined[$i])) {
+            $combined[$i][1] = end($include);
         }
     } else {
-        $run = $singles[$i] == $singles[$i - 1] + 1
-            && $singles[$i] == $singles[$i + 1] - 1;
-        if (!$run) {
-            $t[] = $s;
-            $s = u($singles[$i]);
-        }
+        $combined[] = $include;
+        $i += 1;
     }
 }
 
-// finish up after the end of the above loop
-if ($run) {
-    $s .= ".." . u($singles[$i]);
-    $t[] = $s;
-} else {
-    $t[] = u($singles[$i]);
+// encode the included, not-collated ranges
+foreach ($combined as $range) {
+    $output[] = !isset($range[1]) ? u($range[0]) : u($range[0]) . '..' . u($range[1]);
 }
 
 // encode the folding rules
-foreach ($sets as $codes) {
-    $to = u($codes[0]);
-    for ($i = 1; $i < count($codes); ++$i) {
-        $t[] = u($codes[$i]) . "->$to";
+foreach ($sets as $set) {
+    $to = '->' . u(array_shift($set));
+    foreach ($set as $code) {
+        $output[] = u($code) . $to;
     }
-}
-
-// is there anything to output?
-if (!$t) {
-    exit(0);
 }
 
 // format output for the sphinx config file
-print($startswith);
+// Figure from config useful values for data output
+$leadstr = "\\\n" . str_repeat(" ", $indent);
+echo $startswith;
 $w = strlen($startswith);
-$last = array_pop($t);
-foreach ($t as $s) {
+$last = array_pop($output);
+foreach ($output as $s) {
     $s .= ', ';
     if ($w + strlen($s) > $linewidth) {
-        print("\\\n$leadstr");
-        $w = $leadwidth;
+        echo $leadstr;
+        $w = $indent;
     }
-    print($s);
+    echo $s;
     $w += strlen($s);
 }
 print("$last\n");

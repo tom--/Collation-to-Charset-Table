@@ -15,28 +15,6 @@
  */
 
 /**
- * Generate Sphinx charset folding rules for these Unicode character ranges.
- *
- * You may want to manually add a some terminal ranges to Sphinx's charset_table. For
- * example, with the $ranges in this example, I want to cover all "reasonable" alphabets
- * in the range 0000-FFFF. But utf8_general_ci doesn't do anything to most of that range.
- * So it's easier to use this script on a portion of the range and enter the rest as
- * terminals in charset_table manually, e.g.:
- *
- *   U+590..109F, U+1100..167F, U+1700..U+1DFF, U+2C60..U+2DFF, \
- *   U+2E80..U+2FFF, U+3040..U+DFFF, U+F900..U+FBFF, U+FE70..U+FFEF, \
- *
- * @var string[] Array of hex ranges as strings
- */
-
-$ranges = array(
-    ['0000', '02AF'],
-    ['0370', '058F'],
-    ['10A0', '10FF'],
-    ['1E00', '1FFF'],
-    ['1F300', '1F77F'],
-);
-/**
  * @var string Name of the working database to use for processing.
  */
 $dbname = 'my_collation_db';
@@ -59,11 +37,11 @@ $pdoDsn = 'mysql:host=127.0.0.1';
 /**
  * @var string MySQL user name
  */
-$mysqlUser = 'user';
+$mysqlUser = 'root';
 /**
- * @var string MySQL password
+ * @var string MySQL password. Set a string literal if you prefer
  */
-$mysqlPass = 'password';
+$mysqlPass = include('mysql_password.php');
 /*
  * END OF USER CONFIGURATIONS
  * ============================================================================
@@ -89,6 +67,8 @@ function myQuery(PDO $db, $query)
     return $result;
 }
 
+$ranges = require(__DIR__ . '/range_config.php');
+
 $db = new PDO($pdoDsn, $mysqlUser, $mysqlPass);
 myQuery($db, "SET NAMES $charset COLLATE $collation");
 myQuery($db, "DROP DATABASE IF EXISTS `$dbname`");
@@ -99,7 +79,7 @@ myQuery($db,
     "CREATE TABLE `$tablename` (
         `dec` int NOT NULL,
         `mychar` char(1) CHARACTER SET $charset COLLATE $collation NOT NULL,
-        `hex` varchar(8) NOT NULL,
+        `hex` varchar(5) NOT NULL,
         PRIMARY KEY  (`dec`)
     ) ENGINE=MyISAM;"
 );
@@ -112,9 +92,9 @@ $statement->bindParam(':hex', $hex);
 $statement->bindParam(':mychar', $mychar);
 
 // Add a row to the working table for every Unicode char in the ranges specified
-foreach ($ranges as $range) {
+foreach ($ranges['collate'] as $range) {
     for ($dec = "0x{$range[0]}"; $dec <= "0x{$range[1]}"; $dec += 1) {
-        $hex = sprintf('%04x', $dec);
+        $hex = sprintf('%02x', $dec);
         $mychar = mb_convert_encoding(hex2bin(sprintf('%08x', $dec)), 'UTF-8', 'UTF-32BE');
         if ($statement->execute() === false) {
             myPdoError($db, $statement);
@@ -128,7 +108,7 @@ foreach ($ranges as $range) {
 //	  x: a comma separated list of utf8 characters
 //	  y: a comma separated list of hex unicode codepoints
 $r = myQuery($db,
-    "SELECT GROUP_CONCAT(`mychar` ORDER BY `dec` ASC SEPARATOR ',') AS x,
+    "SELECT GROUP_CONCAT(if(ord(`mychar`) < 33, concat('U+', `hex`), `mychar`) ORDER BY `dec` ASC SEPARATOR ',') AS x,
             GROUP_CONCAT(`hex`    ORDER BY `dec` ASC SEPARATOR ',') AS y
     FROM $tablename GROUP BY `mychar`;"
 );
