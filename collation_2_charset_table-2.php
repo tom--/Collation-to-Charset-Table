@@ -1,4 +1,5 @@
 <?php
+
 /*
  * Copyright (c) 2012, Tom Worster <fsb@thefsb.org>
  *
@@ -14,41 +15,39 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+ini_set('default_charset', 'UTF-8');
+ini_set('mbstring.func_overload', 0);
+
+/*
+ * Formatting configurations...
+ */
 /**
  * @var string The first line of output
  */
 $startswith = "    charset_table = ";
 /**
- * @var int Limit num. chars per output line
+ * @var integer Max output line length
  */
 $linewidth = 120;
 /**
- * @var int Spaces to indent a continuation line
+ * @var integer Continuation line indentation
  */
 $indent = 8;
 /**
- * Minimun number of hex chars in each codepoint in output.
+ * @var integer Minimun number of hex chars in each codepoint in output.
  */
 $codePointDigits = 2;
-/*
- * END OF USER CONFIGURATIONS
- * ============================================================================
+/**
+ * @var bool Set true for a less readable charset_table.
  */
+$stingyWhitespace = false;
 
-ini_set('default_charset', 'UTF-8');
-ini_set('mbstring.func_overload', 0);
-
-$excludeRanges = require(__DIR__ . '/range_config.php');
 
 /**
- * Convert hex string to Sphinx Unicode code point literal.
+ * Generate a Unicode code point literal from hex or integer.
  *
- * Given a hex string argument, return a unicode code point litieral in the
- * format used in a sphinx config file's charset_table part.
- *
- * @param string $codePoint Hex number
- *
- * @return string Sphinx format Unicode character litieral
+ * @param integer|string $codePoint
+ * @return string Code point in unicode notation, e.g. U+261C
  */
 function u($codePoint)
 {
@@ -67,15 +66,18 @@ function u($codePoint)
 
 /** @var array[] Sets of characters collated with equal value, to be folded by Sphinx */
 $sets = [];
-/** @var array Terminal characters Sphinx will actually index*/
-$terminals = [];
-/** @var array $includes */
-$includes = [];
-/** string $output formatted charset_table elements */
+
+/** @var array[] Code points and ranges to include in indexes */
+$index = [];
+
+/** @var string[] formatted charset_table elements */
 $output = [];
 
-// From the $ranges configuration, figure the ranges to include without collation.
-$excludeRanges = array_merge($excludeRanges['collate'], $excludeRanges['exclude']);
+$config = require(__DIR__ . '/config.php');
+
+// From the configuration, figure the ranges to include without collation, i.e. all of
+// Unicode minus 'collate' ranges and 'exclude' ranges.
+$excludeRanges = array_merge($config['collate'], $config['exclude']);
 foreach ($excludeRanges as $i => $range) {
     $excludeRanges[$i][0] = is_integer($range[0]) ? $range[0] : hexdec($range[0]);
     $excludeRanges[$i][1] = is_integer(end($range)) ? end($range) : hexdec(end($range));
@@ -86,7 +88,7 @@ sort($excludeRanges);
 $includeFrom = 0;
 foreach ($excludeRanges as $range) {
     if ($range[0] > $includeFrom) {
-        $includes[] = $includeFrom === $range[0] - 1 ? [$includeFrom] : [$includeFrom, $range[0] - 1];
+        $index[] = $includeFrom === $range[0] - 1 ? [$includeFrom] : [$includeFrom, $range[0] - 1];
     }
     if ($range[1] >= $includeFrom) {
         $includeFrom = $range[1] + 1;
@@ -97,46 +99,44 @@ $includeTo = hexdec('10FFFF');
 $next = end($excludeRanges);
 $next = end($next) + 1;
 if ($next <= $includeTo) {
-    $includes[] = $next === $includeTo ? [$includeTo] : [$includeFrom, $includeTo];
+    $index[] = $next === $includeTo ? [$includeTo] : [$includeFrom, $includeTo];
 }
 
-// parse each input line
+// Parse each line of stdin.
 foreach (file('php://stdin') as $line) {
-    // search each input line for a tab character
-    if (preg_match('/\t(.+)\s?$/u', $line, $m)) {
-        // if the part after the tab ...
-        if (preg_match('/^[0-9a-f]{1,5}$/', $m[1])) {
-            // ... a single hex codepoint then it's a singleton,
-            // add it to the list of singles
-            $includes[] = [hexdec($m[1])];
-        } elseif (preg_match('/^[0-9a-f]{1,5}(,[0-9a-f]{1,5})+$/', $m[1])) {
-            // ... a comma separatred list of codepoints,
-            // it's a set of chars to be folded to the frst of them,
-            // split it and add to the list of sets
-            $set = array_map('hexdec', explode(',', $m[1]));
-            $includes[] = [$set[0]];
+    // Take the part of the line after the tab.
+    if (preg_match('/\t(.+)\s?$/u', $line, $match)) {
+        if (preg_match('/^[0-9a-f]{1,5}$/', $match[1])) {
+            // The line is a singleton. Index it.
+            $index[] = [hexdec($match[1])];
+        } elseif (preg_match('/^[0-9a-f]{1,5}(,[0-9a-f]{1,5})+$/', $match[1])) {
+            // The line is a folding set. Index its first codepoint and save the folding set.
+            $set = array_map('hexdec', explode(',', $match[1]));
+            $index[] = [$set[0]];
             $sets[] = $set;
         }
     }
 }
 
-sort($includes);
-$combined = [array_shift($includes)];
+// merge singletons and folding targets with the uncollated, indexed ranges into $combined
+sort($index);
+$combinedIndex = [array_shift($index)];
 $i = 0;
-foreach ($includes as $include) {
-    if ($include[0] <= end($combined[$i]) + 1) {
-        if (end($include) > end($combined[$i])) {
-            $combined[$i][1] = end($include);
+foreach ($index as $range) {
+    if ($range[0] <= end($combinedIndex[$i]) + 1) {
+        if (end($range) > end($combinedIndex[$i])) {
+            $combinedIndex[$i][1] = end($range);
         }
     } else {
-        $combined[] = $include;
+        $combinedIndex[] = $range;
         $i += 1;
     }
 }
+unset($index);
 
-// encode the included, not-collated ranges
-foreach ($combined as $range) {
-    $output[] = !isset($range[1]) ? u($range[0]) : u($range[0]) . '..' . u($range[1]);
+// encode the combined code points and ranges to index
+foreach ($combinedIndex as $range) {
+    $output[] = $range[0] === end($range) ? u($range[0]) : u($range[0]) . '..' . u($range[1]);
 }
 
 // encode the folding rules
@@ -150,11 +150,12 @@ foreach ($sets as $set) {
 // format output for the sphinx config file
 // Figure from config useful values for data output
 $leadstr = "\\\n" . str_repeat(" ", $indent);
+$separator = $stingyWhitespace ? ',' : ', ';
 echo $startswith;
 $w = strlen($startswith);
 $last = array_pop($output);
 foreach ($output as $s) {
-    $s .= ', ';
+    $s .= $separator;
     if ($w + strlen($s) > $linewidth) {
         echo $leadstr;
         $w = $indent;
@@ -162,4 +163,4 @@ foreach ($output as $s) {
     echo $s;
     $w += strlen($s);
 }
-print("$last\n");
+echo "$last\n";
