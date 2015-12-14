@@ -84,8 +84,29 @@ foreach ($excludeRanges as $i => $range) {
     sort($excludeRanges[$i]);
 }
 sort($excludeRanges);
-
-$includeFrom = 0;
+/*
+ * 12.2.16. charset_table
+ *
+ * Accepted characters table, with case folding rules. Optional, default value are latin and cyrillic characters.
+ *
+ * charset_table is the main workhorse of Sphinx tokenizing process, ie. the process of extracting keywords from
+ * document text or query text. It controls what characters are accepted as valid and what are not, and how the
+ * accepted characters should be transformed (eg. should the case be removed or not).
+ *
+ * You can think of charset_table as of a big table that has a mapping for each and every of 100K+ characters in
+ * Unicode(*). By default, every character maps to 0, which means that it does not occur within keywords and should
+ * be treated as a separator. Once mentioned in the table, character is mapped to some other character (most
+ * frequently, either to itself or to a lowercase letter), and is treated as a valid keyword part.
+ *
+ * ...
+ *
+ * Control characters with codes from 0 to 31 are always treated as separators.
+ *
+ * (*) HOWEVER: Sphinx 2.2.9 only processes the Basic Multilingual, Supplementary Multilingual, and Supplementary
+ * Ideographic Planes, i.e. U+0..U+2FFFF.
+ */
+$includeFrom = 32;
+$includeTo = hexdec('2ffff');
 foreach ($excludeRanges as $range) {
     if ($range[0] > $includeFrom) {
         $index[] = $includeFrom === $range[0] - 1 ? [$includeFrom] : [$includeFrom, $range[0] - 1];
@@ -95,7 +116,6 @@ foreach ($excludeRanges as $range) {
     }
 }
 
-$includeTo = hexdec('10FFFF');
 $next = end($excludeRanges);
 $next = end($next) + 1;
 if ($next <= $includeTo) {
@@ -108,12 +128,17 @@ foreach (file('php://stdin') as $line) {
     if (preg_match('/\t(.+)\s?$/u', $line, $match)) {
         if (preg_match('/^[0-9a-f]{1,5}$/', $match[1])) {
             // The line is a singleton. Index it.
-            $index[] = [hexdec($match[1])];
+            $code = hexdec($match[1]);
+            if ($code > 32) {
+                $index[] = [$code];
+            }
         } elseif (preg_match('/^[0-9a-f]{1,5}(,[0-9a-f]{1,5})+$/', $match[1])) {
             // The line is a folding set. Index its first codepoint and save the folding set.
             $set = array_map('hexdec', explode(',', $match[1]));
-            $index[] = [$set[0]];
-            $sets[] = $set;
+            if ($set[0] > 32) {
+                $index[] = [$set[0]];
+                $sets[] = $set;
+            }
         }
     }
 }
