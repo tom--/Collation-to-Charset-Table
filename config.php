@@ -36,6 +36,7 @@ return [
         ['30000', '10FFFF'],
     ],
     // Name of the working database to use for processing
+    // WARNING: This database will be dropped, and recreated each time. Don't dont use an existing database!
     'dbname' => 'my_collation_db',
     // Name of the working table to use for processing
     'tablename' => 'my_table',
