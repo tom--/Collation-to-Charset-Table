@@ -1,8 +1,10 @@
-Creating a Sphinx charset_table from a MySQL Collation
+Create a custom Sphinx charset_table from a MySQL Collation
 =====
 
 Quick start: Using the scripts
 ----
+
+This requires PHP 7.0+, ICU, and Intl extension.
 
 In *config.php* adjust these lines to your environment
 
@@ -19,6 +21,9 @@ php c2ct1.php | php c2ct2.php | less
 ```
 
 But you shouldn't use that charset_table until you understand what it represents.
+There's no such thing as a standard charset_table. You need a charset_table
+that's appropriate for *your* application. Customize it—don't criticize it.
+
 
 Creating a custom charset_table
 ----
@@ -51,13 +56,13 @@ The basic idea is that you can dump out any of MySQL’s collations by populatin
 SELECT GROUP_CONCAT(mychar) FROM mytable GROUP BY mychar
 ```
 
-The output of which can then be procesed into charset_table rules for a Sphinx config file.
+The output of which can then be processed into charset_table rules for a Sphinx config file.
 
 I broke the process into three steps:
 
 * A script generates a human-readable file describing the collation rules
 * Manually edit the file to define the exact rules I want Sphinx to use
-* A second script turns the edited file into a charset_table definiton
+* A second script turns the edited file into a charset_table definition
 
 The first script takes as input specification of a MySQL utf8 collation and a numeric
 range of Unicode code points. It creates the table, populates it, runs the SELECT
@@ -103,7 +108,7 @@ if it is working on utf8_general_ci from 0x20 to 0x17f then it would look like t
 	Ŧ,ŧ⇥0166,0167
 	µ⇥00b5
 
-Each line in the file repesents a set of characters the collation treats as equivalent.
+Each line in the file represents a set of characters the collation treats as equivalent.
 A line has one or more characters (comma separated) followed by a tab followed by
 those characters’ respective Unicode codepoints.
 
@@ -115,7 +120,7 @@ in the charset_table. For example in the last line above, `µ` will become
 “U+00b5” standing on its own in the charset_table with “-&gt;” neither before nor after
 it.
 
-A line with two or more charcters does two things. First, the leftmost character in the
+A line with two or more characters does two things. First, the leftmost character in the
 set will become a singleton. Then all the characters to the right of the first character
 will be folded to that first character. For example, take the line:
 
@@ -131,10 +136,10 @@ U+0044, U+0064->U+0044, U+010e->U+0044, U+010f->U+0044
 
 When I was editing my file I first reviewed the folding rules (the lines with more than
 one character) to see that they made sense. Then I carefully thought about all the
-characters I didn’t want Sphinx to index at all and deleted those lines from the file.
+characters I didn't want Sphinx to index at all and deleted those lines from the file.
 For example, in a song’s artist name field I want `!`, `'`,
 `’` indexed but not `"`, `$` or
-`?`. Finally, thiking about the equivalence of “O'brien” and “O’brien”,
+`?`. Finally, thinking about the equivalence of “O'brien” and “O’brien”,
 I replaced the singleton `'` line with this:
 
 ```
@@ -143,12 +148,20 @@ I replaced the singleton `'` line with this:
 
 The second script then reads the edited file and generates the rules as I described.
 
+Using the charset_table: normalize NFC
+----
+
+The `*_unicode_ci` collations are much more sophisticated than `*_general_ci`. So,
+given that Sphinx only folds individual codepoints, not graphemes or whatnot, it's more
+important than ever to normalize to Normal Form C before inserting strings to
+the DB and before using strings in Sphinx queries. In PHP you can use
+[`\Normalizer::normalize()`](https://secure.php.net/manual/en/normalizer.normalize.php).
 
 
 License
 -----
 
-Copyright (c) 2012, Tom Worster <fsb@thefsb.org>
+Copyright (c) 2012-2017, Tom Worster <fsb@thefsb.org>
 
 Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
 

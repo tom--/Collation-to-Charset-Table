@@ -1,5 +1,20 @@
 <?php
 
+/*
+ * Copyright (c) 2012, Tom Worster <fsb@thefsb.org>
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any purpose with
+ * or without fee is hereby granted, provided that the above copyright notice and this
+ * permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD
+ * TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN
+ * NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
 namespace spinitron\c2ct;
 
 class CollationToCharsetTable
@@ -37,7 +52,7 @@ class CollationToCharsetTable
     public $pdo_pass = 'passwerd';
 
     /**
-     * Codepoint ranges to include in a Sphinx charet_table.
+     * Codepoint ranges to include in a Sphinx charset_table.
      *
      * See http://sphinxsearch.com/docs/current.html#conf-charset-table
      *
@@ -49,7 +64,7 @@ class CollationToCharsetTable
      * If the range value is true then the charset_table folds codepoints in the
      * range according to your chosen collation.
      *
-     * Characters that you want to function as keyword separators must be exluced
+     * Characters that you want to function as keyword separators must be educed
      * from the ranges by any of the following:
      *
      * 1. excluded their codepoints from $ranges, e.g. if U+20 doesn't appear in any
@@ -165,11 +180,11 @@ class CollationToCharsetTable
         /**
          * @var string The first line of output
          */
-        $startswith = "    charset_table = ";
+        $startsWith = "    charset_table = ";
         /**
          * @var int Limit num. chars per output line
          */
-        $linewidth = 120;
+        $maxLine = 120;
         /**
          * @var int spaces to indent continuation lines
          */
@@ -192,14 +207,14 @@ class CollationToCharsetTable
         foreach (explode("\n", $editableTable) as $line) {
             // search each input line for a tab character
             if (preg_match('/^(.+)\t(.+)$/u', $line, $matches)) {
-                // if the part after the tab on the unput line is ...
+                // if the part after the tab on the input line is ...
                 if (preg_match('/^[0-9a-f]{1,8}$/i', $matches[2])) {
                     // ... a single hex codepoint then it's a singleton,
                     // add it to the list of singles
                     $singles[] = hexdec($matches[2]);
                 } elseif (preg_match('/^[0-9a-f]{1,8}(,[0-9a-f]{1,8})+$/i', $matches[2])) {
-                    // ... a comma separatred list of codepoints,
-                    // it's a set of chars to be folded to the frst of them,
+                    // ... a comma separated list of codepoints,
+                    // it's a set of chars to be folded to the first of them,
                     // split it and add to the list of sets
                     $sets[] = array_map('hexdec', explode(',', $matches[2]));
                 }
@@ -227,7 +242,7 @@ class CollationToCharsetTable
         $elements = [];
         $element = sprintf($format, $singles[0]);
         for ($i = 1; $i < count($singles) - 1; $i++) {
-            // detect runs of consecutive codeponts and use
+            // detect runs of consecutive codepoints and use
             // Sphinx's .. notation, e.g.: 'U+041..U+05A'
             if ($run) {
                 if ($singles[$i] != $singles[$i + 1] - 1) {
@@ -261,12 +276,12 @@ class CollationToCharsetTable
         }
 
         // format output for the sphinx config file
-        $charsetTable = $startswith;
-        $lineLength = strlen($startswith);
+        $charsetTable = $startsWith;
+        $lineLength = strlen($startsWith);
         $last = array_pop($elements);
         foreach ($elements as $element) {
             $element .= ', ';
-            if ($lineLength + strlen($element) >= $linewidth) {
+            if ($lineLength + strlen($element) >= $maxLine) {
                 $charsetTable .= "\\\n" . str_repeat(' ', $indent);
                 $lineLength = $indent;
             }
