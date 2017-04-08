@@ -1,18 +1,40 @@
 Creating a Sphinx charset_table from a MySQL Collation
 =====
 
+Quick start: Using the scripts
+----
+
+In *config.php* adjust these lines to your environment
+
+```php
+    'pdo_dsn' => 'mysql:host=127.0.0.1',
+    'pdo_user' => 'root',
+    'pdo_pass' => require __DIR__ . '/pdo_password.php',
+```
+
+and then run
+
+```
+php c2ct1.php | php c2ct2.php | less
+```
+
+But you shouldn't use that charset_table until you understand what it represents.
+
+Creating a custom charset_table
+----
+
 I have an application that deals with music metadata from all over the world and
 I therefore use Unicode. I want a search function that native English speakers can
 use without understanding accents and diacriticals from other languages. MySQL’s
-utf8_general_ci is ideal. For example the letter “A” in a search key matches any
-of these:
+collations such as utf8_general_ci or utf8mb4_unicode_ci are ideal. For example
+the letter “A” in a search key matches any of these:
 
 ```
 A,a,À,Á,Â,Ã,Ä,Å,à,á,â,ã,ä,å,Ā,ā,Ă,ă,Ą,ą
 ```
 
 The search uses SphinxSearch so I want to configure it to use character matching
-tables that are compatible utf8_general_ci. Sphinx’s charset_table allows any
+tables that are compatible with the DB collation. Sphinx’s charset_table allows any
 character folding to be configured but it isn’t going to be trivial to write down
 all the rules.
 
@@ -88,7 +110,7 @@ those characters’ respective Unicode codepoints.
 With an understanding of how the second script works, I can edit the file to get the
 Sphinx charset_table rules I want.
 
-A line with only one character will be translated to a singleton (ie. terminal) character
+A line with only one character will be translated to a singleton (i.e. terminal) character
 in the charset_table. For example in the last line above, `µ` will become
 “U+00b5” standing on its own in the charset_table with “-&gt;” neither before nor after
 it.
@@ -121,9 +143,7 @@ I replaced the singleton `'` line with this:
 
 The second script then reads the edited file and generates the rules as I described.
 
-Feel free to play with the scripts. The output
-of the first can be piped into the second but I feel that the manual editing of the
-intermediate file is important.
+
 
 License
 -----
