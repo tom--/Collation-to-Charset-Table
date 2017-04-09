@@ -232,7 +232,7 @@ It will be encoded into these Sphinx charset_table rules:
 
     Y, y->Y, U+DD->Y, U+FD->Y, U+FF->Y
 
-So Sphinx will encode `Y` a search keyword character ane will map the other four (`y Ý ý ÿ`) to `Y`
+So Sphinx will encode `Y` as a search keyword character ane will map the other four (`y Ý ý ÿ`) to `Y`
 
 Note: `c2ct` does run encoding so that you probably won't find `Y` in the output. Something like
 this, in which `Y` is part of the `A..Z` range, is more typical of output from `c2ct sphinx`.
