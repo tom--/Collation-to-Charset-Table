@@ -8,26 +8,18 @@ return [
     'pdo_pass' => require __DIR__ . '/pdo_password.php',
 
     'ranges' => [
-        '0021-007E' => true,
-        '00A0-02AF' => true,
-        '02B0-036F' => false,
-        '0370-058F' => true,    // Latin, Latin Ext., Greek, Coptic, Cyrillic etc.
-        '0590-109F' => false,
-        '10A0-10FF' => true,    // Georgian
-        '1100-167F' => false,
-        '1700-1DFF' => false,
-        '1E00-1FFF' => true,    // Latin Ext. Additional, Greek Ext.
-        '2070-2BFF' => false,
-        '2C00-2D2F' => true,    // Glagolitic, Latin Ext.-C, Coptic, Georgian Sup.
-        '2D30-2DDF' => false,
-        '2DE0-2DFF' => true,   // Cyrillic Ext.-A
-        '2E00-A63F' => false,
-        'A640-A7FF' => true,   // Cyrillic Ext.-B, ..., Latin Ext.-D
-        'A800-D7FF' => false,
-        'E000-2FFFF' => false,
+        [0x0021, 0x007E],
+        //[0x00A0, 0x1FFF],
+        //[0x2070, 0xA7FF],
+        //[0xA800, 0xD7FF],
+        //[0xE000, 0xEFFF],
+        //[0xF000, 0xFFFF],
+        //[0x10000, 0x1BFFF],
+        [0x1D000, 0x1F1FF],
+        [0x1F300, 0x1F9FF],
     ],
     'exclude_character_categories' => [
-        \IntlChar::CHAR_CATEGORY_UNASSIGNED,
+        //\IntlChar::CHAR_CATEGORY_UNASSIGNED,
         \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR,
         \IntlChar::CHAR_CATEGORY_LINE_SEPARATOR,
         \IntlChar::CHAR_CATEGORY_PARAGRAPH_SEPARATOR,
