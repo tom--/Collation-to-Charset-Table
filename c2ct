@@ -1,45 +1,53 @@
 #!/usr/bin/env php
 <?php
 
-namespace spinitron\c2ct;
-
 require __DIR__ . '/CollationToCharsetTable.php';
-$c2cc = new CollationToCharsetTable(require __DIR__ . '/config.php');
+$c2cc = new \spinitron\c2ct\CollationToCharsetTable(require __DIR__ . '/config.php');
 
-$script = array_shift($argv);
+$script = basename(array_shift($argv));
+
 $command = array_shift($argv);
 switch ($command) {
     case 'newtable':
-        $c2cc->newTable();
+        $c2cc->createDbCharsetTable(in_array('-v', $argv));
         break;
+
     case 'editable':
         echo $c2cc->getEditable(!in_array('-d', $argv), in_array('-c', $argv));
         break;
+
     case 'utf8':
+    case 'hex':
     case 'sphinx':
     case 'rules':
-        $method = 'get' . ucfirst($command);
-        if (in_array('-', $argv)) {
-            $c2cc->parseEditableTable(file_get_contents('php://stdin'), !in_array('-d', $argv));
+        if (end($argv) === '-') {
+            $c2cc->parseCharsetTable(file_get_contents('php://stdin'), !in_array('-d', $argv));
         }
+
+        $method = 'get' . ucfirst($command);
         echo $c2cc->$method();
         break;
+
     default:
         echo <<<TXT
 Usage:
-    $script { newtable | editable [-c][-d] | utf8 [-d][-] | sphinx [-d][-] | rules [-d][-] }
+    $script { newtable [-v] | editable [-c] [-d] | { hex | utf8 | sphinx | compressed [-d] [-] } }
 
 Commands:
-    newtable  Populate a MySQL collation table with characters
-    editable  Write human-editable charset table given the populated collation table to stdout
-    utf8      Write human-readable charset table using UTF-8 to stdout
-    sphinx    Write human-readable Sphinx charset_table to stdout
-    rules     Write compressed Sphinx charset_table to stdout
+    - newtable : Populate the DB charset table with characters
+    - editable : Write the DB charset table as human-editable charset table to stdout
+    - hex | utf8 | sphinx | compressed : Read a raw charset table from either stdin 
+      or the DB table, process it, and write it to stdout
+         - hex     as hex codepoints reading by a human 
+         - utf8    in UTF-8 characters reading by a human
+         - sphinx  as a Sphinx charset_table structured for easier reading by a human
+         - rules   compressed Sphinx charset_table compressed onto fewer lines
 
 Options:
-    -c  Sort human-editable charset table in by codepoint rather than collation
+    -v  Write verbose information about each codepoint in the configured ranges
+    -c  Sort output table by codepoint rather than collation
     -d  Codepoints in decimal rather than hex
-    -   Rread a human-editable charset table from stdin instead of the MySQL collation table
+    -   Read a human-editable charset table from stdin instead of the MySQL collation table
 
 TXT;
         exit(1);

@@ -23,12 +23,12 @@ class CollationToCharsetTable
     /**
      * @var string Name of the working database to use for processing.
      */
-    public $dbname = 'collation_2_charset_table';
+    public $dbName = 'collation_2_charset_table';
     /**
      * WARNING The script drops and creates this table on each run!
      * @var string Name of the working table to use for processing.
      */
-    public $tablename = 'collation_2_charset_table';
+    public $tableName = 'collation_2_charset_table';
     /**
      * @var string Your choice of character encoding, probably "utf8" or "utf8mb4"
      */
@@ -36,79 +36,106 @@ class CollationToCharsetTable
     /**
      * @var string Collation to use
      */
-    public $collation = 'utf8mb4_general_ci';
+    public $collation = 'utf8mb4_unicode_ci';
     /**
      * @var string PDO DSN
      */
-    public $pdo_dsn = 'mysql:host=127.0.0.1';
+    public $pdoDsn = 'mysql:host=127.0.0.1';
     /**
      * @var string MySQL user name
      */
-    public $pdo_user = 'root';
+    public $pdoUser = 'root';
     /**
      * @var string MySQL password. Change this to set your password or add a file
      * named "pdo_password.php" that returns it.
      */
-    public $pdo_pass = 'passwerd';
+    public $pdoPass = '';
 
     /**
-     * Codepoint ranges to include in a Sphinx charset_table.
+     * Codepoint ranges to include in the Sphinx charset_table.
      *
      * See http://sphinxsearch.com/docs/current.html#conf-charset-table
      *
-     * collation_2_charset_table generates a charset_table that includes Unicode
-     * codepoints the ranges in this array. Codepoints that do not appear in these
-     * ranges cannot be in Sphinx-indexed keywords and will function as keyword
-     * separators.
+     * Characters that you want to function as keyword separators must be exclude from
+     * the final charset_table. You can do this by any of the following
      *
-     * If the range value is true then the charset_table folds codepoints in the
-     * range according to your chosen collation.
-     *
-     * Characters that you want to function as keyword separators must be educed
-     * from the ranges by any of the following:
-     *
-     * 1. excluded their codepoints from $ranges, e.g. if U+20 doesn't appear in any
+     * 1. Excluded their codepoints from $ranges, e.g. if U+20 doesn't appear in any
      * range in $ranges then it is a separator.
      *
-     * 2. If you have PHP 7, ICU and Intl extension then you can additionally exclude
-     * on the basis of character category and/or property. See below.
+     * 2. Exclude on the basis of Unicode character category and/or property.
+     * @see $excludeProperties and $excludeCharacterCategories below.
      *
      * 3. Manually edit the output of collation_2_charset_table-1.php before feeding
      * it to collation_2_charset_table-1.php.
      *
+     * 4. Manually edit the output Sphinx charset_table.
+     *
      * @var string[] Array of hex ranges as strings
      */
-    public $ranges = [];
+    public $collateRanges = [];
 
     /**
-     * @var int[] Character categories to exclude
+     * @var int Parameter for heuristic shortening of longs strings of single-character
+     * mappings.
+     *
+     * For example, U+1F600 thru U+1F64F all collate together. Normally this would result
+     * in the rules
+     *
+     *      U+1F600, U+1F601->U+1F600, U+1F602->U+1F600, ..., U+1F64F->U+1F600
+     *
+     * which is verbose and maybe unhelpful because you might not want all emoticons to
+     * be equivalent in Sphinx searches.
+     *
+     * $maxFoldRun is set then any contiguous run of folded characters longer than this
+     * is converted into a stray range, e.g. the above example becomes instead
+     *
+     *      U+1F600..U+1F64F
      */
-    public $exclude_character_categories = [];
+    public $maxFoldRun = 8;
 
     /**
-     * @var int[] Character properties to exclude
+     * @var int[] Unicode character categories to exclude. See the IntlChar::CHAR_CATEGORY_*
+     * constants in https://secure.php.net/manual/en/intlchar.chartype.php
      */
-    public $exclude_properties = [];
+    public $excludeCharacterCategories = [];
 
+    /**
+     * @var int[] Unicode character properties to exclude. See the IntlChar::PROPERTY_*
+     * constants in https://secure.php.net/manual/en/class.intlchar.php#intlchar.constants.property-alphabetic
+     */
+    public $excludeProperties = [];
+
+    /** @var array [[[character, ...], [codepoint, ...]], ...] */
+    private $charsetTable;
+
+    /**
+     * @param array $config Sets public properties of the new object
+     */
     public function __construct(array $config = [])
     {
         foreach ($config as $name => $value) {
-            (new \ReflectionProperty(static::class, $name))->setValue($this, $value);
+            try {
+                (new \ReflectionProperty(static::class, $name))->setValue($this, $value);
+            } catch (\ReflectionException $exception) {
+                echo "There is no configuration property named '$name'. Check your config\n";
+
+                exit(1);
+            }
         }
     }
 
     /**
      * Populate the MySQL DB table according to configured ranges and exclusions.
      */
-    public function newTable()
+    public function createDbCharsetTable(bool $verbose = false)
     {
-        $db = new \PDO($this->pdo_dsn, $this->pdo_user, $this->pdo_pass);
+        $db = new \PDO($this->pdoDsn, $this->pdoUser, $this->pdoPass);
         $db->query("SET NAMES '$this->charset' COLLATE '$this->collation';");
-        $db->query("CREATE DATABASE IF NOT EXISTS `$this->dbname`;");
+        $db->query("CREATE DATABASE IF NOT EXISTS `$this->dbName`;");
 
-        $db->query("DROP TABLE IF EXISTS `$this->dbname`.`$this->tablename`;");
+        $db->query("DROP TABLE IF EXISTS `$this->dbName`.`$this->tableName`;");
         $db->query(
-            "CREATE TABLE IF NOT EXISTS `$this->dbname`.`$this->tablename` (
+            "CREATE TABLE IF NOT EXISTS `$this->dbName`.`$this->tableName` (
                 `dec` int NOT NULL,
                 `mychar` char(1) CHARACTER SET $this->charset COLLATE $this->collation NOT NULL,
                 `hex` varchar(8) CHARACTER SET latin1 COLLATE latin1_bin NOT NULL,
@@ -117,7 +144,7 @@ class CollationToCharsetTable
         );
 
         $statement = $db->prepare(
-            "INSERT IGNORE INTO `$this->dbname`.`$this->tablename` 
+            "INSERT IGNORE INTO `$this->dbName`.`$this->tableName` 
             (`dec`, `mychar`, `hex`) VALUES (:dec, :chr, :hex)"
         );
         $categoryLookup = [
@@ -154,104 +181,68 @@ class CollationToCharsetTable
             \IntlChar::CHAR_CATEGORY_CHAR_CATEGORY_COUNT => 'CHAR_CATEGORY_COUNT',
         ];
 
-        foreach ($this->ranges as $range) {
+        foreach ($this->collateRanges as $range) {
             list($from, $to) = $range;
+
             foreach (range($from, $to) as $codepoint) {
                 // Exclude 0x00-0x1F control characters and 0x20 space regardless of input ranges.
                 // (because \t, \n, and space are formatting characters for the editable table.)
                 $charType = \IntlChar::charType($codepoint);
-                if ($codepoint <= 32 || in_array($charType, $this->exclude_character_categories, true)
+                $exclude = null;
+                if ($codepoint <= 32 || in_array($charType, $this->excludeCharacterCategories, true)
                 ) {
-                    if ($codepoint > 0x10000 && $charType > 0) {
-                        printf(
-                            "%s  %05X  %s : (%s) %s\n",
-                            \IntlChar::chr($codepoint),
-                            $codepoint,
-                            \IntlChar::charName($codepoint),
-                            var_export($charType, true),
-                            $categoryLookup[$charType]
-                        );
-                    }
-
-                    continue;
+                    $exclude = "Category ($charType) {$categoryLookup[$charType]}";
                 }
-
-                foreach ($this->exclude_properties as $property) {
+                foreach ($this->excludeProperties as $property) {
                     if (\IntlChar::hasBinaryProperty($codepoint, $property)) {
-                        if ($codepoint > 0x10000) {
-                            printf(
-                                "%s  %05X  %s - [%s] %s\n",
-                                \IntlChar::chr($codepoint),
-                                $codepoint,
-                                \IntlChar::charName($codepoint),
-                                var_export($property, true),
-                                \IntlChar::getPropertyName($property)
-                            );
+                        $exclude = "Property ($property) " . \IntlChar::getPropertyName($property);
+
+                        break;
+                    }
+                }
+
+                if ($verbose) {
+                    printf(
+                        "%-8s%04X    %-40s %s\n",
+                        \IntlChar::chr($codepoint),
+                        $codepoint,
+                        \IntlChar::charName($codepoint),
+                        $exclude ? "Excluded on $exclude" : ''
+                    );
+                }
+
+                if ($exclude === null) {
+                    $statement->execute([
+                        ':dec' => $codepoint,
+                        ':chr' => \IntlChar::chr($codepoint),
+                        ':hex' => sprintf('%X', $codepoint),
+                    ]);
+
+                    $warnings = $db->query('show warnings;');
+                    if ($warnings) {
+                        foreach ($warnings as $warning) {
+                            var_dump($warning);
+                            echo "exiting\n";
+
+                            exit(1);
                         }
-
-                        continue;
-                    }
-                }
-
-                $statement->execute([
-                    ':dec' => $codepoint,
-                    ':chr' => \IntlChar::chr($codepoint),
-                    ':hex' => sprintf('%X', $codepoint),
-                ]);
-
-                $warnings = $db->query('show warnings;');
-                if ($warnings) {
-                    foreach ($warnings as $warning) {
-                        var_dump($warning);
                     }
                 }
             }
         }
     }
 
-    /** @var array [[[character, ...], [codepoint, ...]], ...] */
-    private $collated;
-
-    protected function getCollatedCodepoints(): array
+    /**
+     * Parse a human-editable charset table into the internal charset table.
+     * @param string $editableTable
+     * @param bool $hex Set true for codepoints in hex, false for decimal
+     */
+    public function parseCharsetTable(string $editableTable, $hex = true)
     {
-        if ($this->collated === null) {
-            $db = new \PDO($this->pdo_dsn, $this->pdo_user, $this->pdo_pass);
-
-            // Now the interesting bit. Use mysql's GROUP BY to group rows of characters
-            // according to the collation. Use GROUP_CONCAT to get each set of chars the
-            // collation considers equivalent as:
-            //	  x: a space-separated list of UTF-8 characters
-            //	  y: a space-separated list of hex unicode codepoints
-            $rows = $db->query(
-                "SELECT 
-                GROUP_CONCAT(`mychar` ORDER BY `dec` ASC SEPARATOR 0x01) AS `characters`,
-                GROUP_CONCAT(`dec` ORDER BY `dec` ASC SEPARATOR 0x01) AS `codepoints`
-                FROM `$this->dbname`.`$this->tablename` 
-                GROUP BY `mychar`;"
-            );
-
-            $this->collated = [];
-            // For each grouped set, write to stdout each column x and y as two space-
-            // separated lists with a tab in between
-            foreach ($rows as $row) {
-                $this->collated[] = [
-                    explode(chr(0x01), $row['characters']),
-                    array_map(function ($value) {
-                        return (int)$value;
-                    }, explode(chr(0x01), $row['codepoints'])),
-                ];
-            }
-        }
-
-        return $this->collated;
-    }
-
-    public function parseEditableTable(string $editableTable, $hex = true)
-    {
-        $this->collated = [];
+        $this->charsetTable = [];
         foreach (explode("\n", $editableTable) as $line) {
             list($characters, $codepoints) = explode("\t", $line);
-            $this->collated[] = [
+            $this->charsetTable[] = [
                 explode(' ', $characters),
                 array_map(function ($value) use ($hex) {
                     return (int)($hex ? hexdec($value) : $value);
@@ -260,22 +251,134 @@ class CollationToCharsetTable
         }
     }
 
+    /**
+     * Return the internal charset table as previously parsed or from the DB charset table
+     * @return array of sets of equally collated characters each set represented as
+     * an array [characters, codepoints], where caracters is an array of utf8 chars
+     * and codepoints is an array of integer codepoints, i.e.
+     *
+     *      [
+     *          [[char, ...], [codepoint, ...]],
+     *          ...
+     *      ]
+     */
+    protected function getCharsetTable(): array
+    {
+        if ($this->charsetTable === null) {
+            $this->charsetTable = $this->getCollatedFromDb();
+        }
+
+        return $this->charsetTable;
+    }
+
+    /**
+     * Returns the DB charset table in internal charset format.
+     * @return array @see getCharsetTable()
+     */
+    protected function getCollatedFromDb(): array
+    {
+        $db = new \PDO($this->pdoDsn, $this->pdoUser, $this->pdoPass);
+        $db->query('SET SESSION group_concat_max_len = 10000000;');
+
+        // Now the interesting bit. Use mysql's GROUP BY to group rows of characters
+        // according to the collation. Use GROUP_CONCAT to get each set of chars the
+        // collation considers equivalent as:
+        //	  x: a space-separated list of UTF-8 characters
+        //	  y: a space-separated list of hex unicode codepoints
+        $rows = $db->query(
+            "SELECT 
+                GROUP_CONCAT(`mychar` ORDER BY `dec` ASC SEPARATOR 0x01) AS `characters`,
+                GROUP_CONCAT(`dec` ORDER BY `dec` ASC SEPARATOR 0x01) AS `codepoints`
+                FROM `$this->dbName`.`$this->tableName` 
+                GROUP BY `mychar`;"
+        );
+
+        $warnings = $db->query('show warnings;');
+        if ($warnings) {
+            foreach ($warnings as $warning) {
+                var_dump($warning);
+                echo "exiting\n";
+
+                exit(1);
+            }
+        }
+
+        $charsetTable = [];
+        // For each grouped set, write to stdout each column x and y as two space-
+        // separated lists with a tab in between
+        foreach ($rows as $row) {
+            $charsetTable[] = [
+                explode(chr(0x01), $row['characters']),
+                array_map(function ($value) {
+                    return (int)$value;
+                }, explode(chr(0x01), $row['codepoints'])),
+            ];
+        }
+
+        return $charsetTable;
+    }
+
+    /**
+     * Get blended array of strays, stray range, and folds from the internal charset table.
+     * @return array of integer codepoints organized into elements
+     *  - stray                 stray character
+     *  - [from, to]            stray range
+     *  - [foldTo, [fold, ...]] folding rule (map each fold to foldTo)
+     */
     protected function getBlendedRules()
     {
         list($strays, $folds) = $this->getStraysAndFolds();
 
-        return $this->blendCharsetRules($this->rangeCodepoints($strays), $folds);
+        $strays = $this->arrayRuns($strays);
+
+        if ($this->maxFoldRun !== null && $this->maxFoldRun > 2) {
+            foreach ($folds as $foldTo => $folded) {
+                list($newFold, $newStrays) = $this->arrayRuns($folded, $this->maxFoldRun, false);
+
+                $merged= false;
+                if (empty($newFold)) {
+                    unset($folds[$foldTo]);
+                    if (count($newStrays) === 1 && $newStrays[0][0] === $foldTo + 1) {
+                        $pos = array_search($foldTo, $strays, true);
+                        if ($pos !== false) {
+                            $merged = true;
+                            $strays[$pos] = [$foldTo, $newStrays[0][1]];
+                        }
+                    }
+                }
+
+                if (!$merged) {
+                    $strays = array_merge($strays, $newStrays);
+                }
+            }
+
+            usort($strays, function ($a, $b) {
+                return ($a[0] ?? $a) <=> ($b[0] ?? $b);
+            });
+        }
+
+        return $this->blendCharsetRules($strays, $folds);
     }
 
     /**
-     * @return array [[stray, ...], [foldTo => [fold, ...], ...]]
+     * Get separate arrays of strays and folds from the internal charset table.
+     * @return array First element is array of stray integer codepoints. Second is array
+     * of folding rules, i.e.
+     *
+     *      [
+     *          [stray, ...],
+     *          [
+     *              foldTo => [fold, ...],
+     *              ...
+     *          ]
+     *      ]
      */
     protected function getStraysAndFolds(): array
     {
         $strays = [];
         $folds = [];
 
-        foreach ($this->getCollatedCodepoints() as list($characters, $codepoints)) {
+        foreach ($this->getCharsetTable() as list(, $codepoints)) {
             $strays[] = $codepoints[0];
             if (count($codepoints) > 1) {
                 $folds[array_shift($codepoints)] = $codepoints;
@@ -286,40 +389,43 @@ class CollationToCharsetTable
     }
 
     /**
-     * Encode runs of 3 or more codepoints into [from, to] doubles representing ranges,
-     * e.g. [40, 45, 46, 47, 49] becomes [40, [45, 47], 49]
-     * @param int[] $codepoints array of codepoints
-     * @return mixed[] array of codepoints
+     * Replace runs of $minRun or more integers in the given array into [from, to] doubles
+     * representing the runs' ranges.
+     * @param array $array The array of integers to process, e.g. [1,2,3,5,6,7,9]
+     * @param int $minRun Detect runs no less than this long
+     * @param bool $merged Return the input data merged in one array instead of two separate arrays.
+     * @return array Either
+     *  - a merged array of runs and strays, e.g. [[1,3], [5,7], 9], or
+     *  - two arrays, strays in the first and runs in the second e.g. [[9], [[1,3], [5,7]]]
      */
-    protected function rangeCodepoints(array $codepoints): array
+    protected function arrayRuns(array $array, int $minRun = 3, bool $merged = true): array
     {
-        sort($codepoints);
+        $array = array_values($array);
+        sort($array);
+        $n = count($array);
 
-        $i = 0;
-        do {
-            if ($codepoints[$i] + 1 === ($codepoints[$i + 1] ?? 0)
-                && $codepoints[$i] + 2 === ($codepoints[$i + 2] ?? 0)
-            ) {
-                $runStart = $codepoints[$i];
-                do {
-                    $i += 1;
-                } while ($codepoints[$i] + 1 === ($codepoints[$i + 1] ?? 0));
-                $ranged[] = [$runStart, $codepoints[$i]];
+        $runs = $merged ? [[]] : [[], []];
+        for ($i = 0; $i < $n; $i += 1) {
+            for ($j = 0; $i + $j < $n && $array[$i + $j] === $array[$i] + $j; $j += 1) {
+            };
+            if ($j >= $minRun) {
+                $runs[$merged ? 0 : 1][] = [$array[$i], $array[$i + $j - 1]];
+                $i += $j - 1;
             } else {
-                $ranged[] = $codepoints[$i];
+                $runs[0][] = $array[$i];
             }
-            $i += 1;
-        } while (isset($codepoints[$i]));
+        }
 
-        return $ranged;
+        return $merged ? $runs[0] : $runs;
     }
 
     /**
+     * Blend into one array the given ranged stray codepoints and folding rules.
      * @param $rangedCodepoints array of codepoints and [from, to] ranges
      * @param $folds array of folds as [foldTo => [fold, ...], ...]
-     * @return array all elements from both input arrays arranged in some suitable order
+     * @return array Same format as @see getBlendedRules()
      */
-    protected function blendCharsetRules($rangedCodepoints, $folds): array
+    protected function blendCharsetRules(array $rangedCodepoints, array $folds): array
     {
         $blended = [];
         foreach ($rangedCodepoints as $item) {
@@ -334,50 +440,82 @@ class CollationToCharsetTable
         return $blended;
     }
 
-    protected function u(int $codepoint)
+    /**
+     * Encode a codepoint in Sphinx charset_table format.
+     * @param int $codepoint
+     * @return string
+     */
+    protected function sphinxCp(int $codepoint)
     {
-        return $codepoint > 32 && $codepoint < 127 ? chr($codepoint) : sprintf('U+%02x', $codepoint);
+        return $codepoint > 32 && $codepoint < 127 ? chr($codepoint) : sprintf('U+%02X', $codepoint);
     }
 
-    protected function utf8Folds(array $folds, string $foldSeparator = ' ', $ruleSeparator = ' ← '): string
-    {
-        return \IntlChar::chr($folds[0]) . $ruleSeparator
-            . implode($foldSeparator, array_map(function ($fold) use ($folds) {
-                return \IntlChar::chr($fold);
+    /**
+     * Format a folding rule for reading by a human.
+     */
+    protected function displayFolds(
+        array $folds,
+        \Closure $chr,
+        string $foldSeparator = ' ',
+        string $ruleSeparator = ' ← '
+    ): string {
+        return $chr($folds[0]) . $ruleSeparator
+            . implode($foldSeparator, array_map(function ($fold) use ($folds, $chr) {
+                return $chr($fold);
             }, $folds[1]));
     }
 
-    protected function utf8Table(array $blendedTable, string $indentFolds = "     ", $rangeSeparator = ' … '): array
-    {
+    /**
+     * Format a bended charset table for reading by a human.
+     */
+    protected function displayTable(
+        array $blendedTable,
+        \Closure $chr,
+        string $indentFolds = "     ",
+        string $rangeSeparator = ' … '
+    ): array {
         $outputLines = [];
         foreach ($blendedTable as $item) {
             $outputLines[] = is_int($item)
-                ? \IntlChar::chr($item)
+                ? $chr($item)
                 : (is_array($item[1])
-                    ? $indentFolds . $this->utf8Folds($item)
-                    : \IntlChar::chr($item[0]) . $rangeSeparator . \IntlChar::chr($item[1]));
+                    ? $indentFolds . $this->displayFolds($item, $chr)
+                    : $chr($item[0]) . $rangeSeparator . $chr($item[1]));
         }
 
         return $outputLines;
     }
 
+    /**
+     * Format a folding rule as a string of maps in Sphinx charset_table format: CP1->CP2, CP1->CP2, ...
+     */
     protected function sphinxFolds(array $folds, string $separator = ','): string
     {
         return implode($separator, array_map(function ($fold) use ($folds) {
-            return $this->u($fold) . '->' . $this->u($folds[0]);
+            return $this->sphinxCp($fold) . '->' . $this->sphinxCp($folds[0]);
         }, $folds[1]));
     }
 
+    /**
+     * Format a [from, to] integer codepoint range in Sphinx charset_table format: CP1..CP2
+     */
     protected function sphinxStrayRange(array $range): string
     {
-        return $this->u($range[0]) . '..' . $this->u($range[1]);
+        return $this->sphinxCp($range[0]) . '..' . $this->sphinxCp($range[1]);
     }
 
+    /**
+     * Format a single stray codepoint in Sphinx charset_table format.
+     */
     protected function sphinxStray(int $codepoint): string
     {
-        return $this->u($codepoint);
+        return $this->sphinxCp($codepoint);
     }
 
+    /**
+     * Format a blended charset table in Sphinx charset_table format but structured with
+     * whitespace to make it more human-readable.
+     */
     protected function readableSphinxTable(array $blendedTable, string $indentFolds = "   "): array
     {
         $outputLines = [];
@@ -392,6 +530,9 @@ class CollationToCharsetTable
         return $outputLines;
     }
 
+    /**
+     * Format a blended charset table in Sphinx charset_table format compressed into fewer lines.
+     */
     protected function compressSphinxTable(
         array $blendedTable,
         int $wrap = 120,
@@ -404,7 +545,7 @@ class CollationToCharsetTable
             if (is_array($item)) {
                 if (is_array($item[1])) {
                     foreach ($item[1] as $fold) {
-                        $rules[] = $this->u($fold) . '->' . $this->u($item[0]);
+                        $rules[] = $this->sphinxCp($fold) . '->' . $this->sphinxCp($item[0]);
                     }
                 } else {
                     $rules[] = $this->sphinxStrayRange($item);
@@ -430,9 +571,15 @@ class CollationToCharsetTable
         return $lines;
     }
 
-    public function getEditable($hex = true, $sort = true)
+    /**
+     * Get the internal charset table in the human-editable format.
+     * @param bool $hex Set true for codepoints in hex, false for decimal
+     * @param bool $hex Set true for a table sorted by codepoint
+     * @return string
+     */
+    public function getEditable($hex = true, $sort = true): string
     {
-        $collatedCodepoints = $this->getCollatedCodepoints();
+        $collatedCodepoints = $this->getCharsetTable();
         if ($sort) {
             usort($collatedCodepoints, function ($a, $b) {
                 return $a[1][0] <=> $b[1][0];
@@ -445,23 +592,44 @@ class CollationToCharsetTable
                 $codepoints = array_map('dechex', $codepoints);
             }
             $lines[] = implode(' ', $characters) . "\t" . implode(' ', $codepoints);
-            echo implode(' ', $codepoints) . "\n";
         }
-exit;
+
         return implode("\n", $lines);
     }
 
+    /**
+     * Get the processed charset table in UTF-8 charaters
+     */
     public function getUtf8(): string
     {
-        return implode("\n", $this->utf8Table($this->getBlendedRules())) . "\n";
+        return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
+            return \IntlChar::chr($codepoint);
+        })) . "\n";
     }
 
+    /**
+     * Get the processed charset table in hex codepoints
+     */
+    public function getHex(): string
+    {
+        return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
+            return sprintf('%02X', $codepoint);
+        })) . "\n";
+    }
+
+    /**
+     * Get the processed charset table in Sphinx charset_table format but structured with
+     * whitespace to make it more human-readable.
+     */
     public function getSphinx(): string
     {
         return implode(",\n", $this->readableSphinxTable($this->getBlendedRules())) . "\n";
     }
 
-    public function getRules(): string
+    /**
+     * Get the processed charset table in Sphinx charset_table format compressed into fewer lines.
+     */
+    public function getCompressed(): string
     {
         return implode("\n", $this->compressSphinxTable($this->getBlendedRules())) . "\n";
     }

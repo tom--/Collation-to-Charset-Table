@@ -1,25 +1,32 @@
 <?php
 
-// Overrides the default values of public properties of CollationToCharsetTable
-// if you pass it to the constructor.
+// Overrides the default values of public properties of CollationToCharsetTable.
+// See CollationToCharsetTable's property doc-blocks for documentation.
 return [
-    'pdo_dsn' => 'mysql:host=127.0.0.1',
-    'pdo_user' => 'root',
-    'pdo_pass' => require __DIR__ . '/pdo_password.php',
+    'pdoDsn' => 'mysql:host=127.0.0.1',
+    'pdoUser' => 'root',
+    'pdoPass' => require __DIR__ . '/pdo_password.php',
 
-    'ranges' => [
+    'collateRanges' => [
         [0x0021, 0x007E],
-        //[0x00A0, 0x1FFF],
+        [0x00A1, 0x00FF],
+        //[0x0100, 0x1FFF],
         //[0x2070, 0xA7FF],
         //[0xA800, 0xD7FF],
         //[0xE000, 0xEFFF],
         //[0xF000, 0xFFFF],
-        //[0x10000, 0x1BFFF],
-        [0x1D000, 0x1F1FF],
-        [0x1F300, 0x1F9FF],
+        //[0x10000, 0x10FFF],
+        //[0x11000, 0x111FF],
+        //[0x12000, 0x124FF],
+        //[0x13000, 0x134FF],
+        //[0x17000, 0x18AFF],
+        //[0x1D000, 0x1DAFF],
+        //[0x1F000, 0x1F9FF],
+        //[0x1F600, 0x1F64F],
     ],
-    'exclude_character_categories' => [
-        //\IntlChar::CHAR_CATEGORY_UNASSIGNED,
+    'maxFoldRun' => 8,
+    'excludeCharacterCategories' => [
+        \IntlChar::CHAR_CATEGORY_UNASSIGNED,
         \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR,
         \IntlChar::CHAR_CATEGORY_LINE_SEPARATOR,
         \IntlChar::CHAR_CATEGORY_PARAGRAPH_SEPARATOR,
@@ -34,7 +41,7 @@ return [
         \IntlChar::CHAR_CATEGORY_INITIAL_PUNCTUATION,
         \IntlChar::CHAR_CATEGORY_FINAL_PUNCTUATION,
     ],
-    'exclude_properties' => [
+    'excludeProperties' => [
         \IntlChar::PROPERTY_DASH,
         \IntlChar::PROPERTY_DEFAULT_IGNORABLE_CODE_POINT,
         \IntlChar::PROPERTY_HYPHEN,
