@@ -19,7 +19,7 @@ switch ($command) {
     case 'utf8':
     case 'hex':
     case 'sphinx':
-    case 'rules':
+    case 'compressed':
         if (end($argv) === '-') {
             $c2cc->parseCharsetTable(file_get_contents('php://stdin'), !in_array('-d', $argv));
         }
@@ -38,10 +38,10 @@ Commands:
     - editable : Write the DB charset table as human-editable charset table to stdout
     - hex | utf8 | sphinx | compressed : Read a raw charset table from either stdin 
       or the DB table, process it, and write it to stdout
-         - hex     as hex codepoints reading by a human 
-         - utf8    in UTF-8 characters reading by a human
-         - sphinx  as a Sphinx charset_table structured for easier reading by a human
-         - rules   compressed Sphinx charset_table compressed onto fewer lines
+         - hex        as hex codepoints reading by a human 
+         - utf8       in UTF-8 characters reading by a human
+         - sphinx     as a Sphinx charset_table structured for easier reading by a human
+         - compressed compressed Sphinx charset_table compressed onto fewer lines
 
 Options:
     -v  Write verbose information about each codepoint in the configured ranges
