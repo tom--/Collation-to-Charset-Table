@@ -11,7 +11,8 @@ return [
         [0x0021, 0x007E],
         [0x00A1, 0x00FF],
         [0x0100, 0x04FF],
-        //[0x0500, 0x1FFF],
+        //[0x0500, 0x07FF],
+        //[0x0800, 0x1FFF],
         //[0x2070, 0xA7FF],
         //[0xA800, 0xD7FF],
         //[0xE000, 0xEFFF],
@@ -23,9 +24,7 @@ return [
         //[0x17000, 0x18AFF],
         //[0x1D000, 0x1DAFF],
         //[0x1F000, 0x1F9FF],
-        //[0x1F600, 0x1F64F],
     ],
-    'maxFoldRun' => 8,
     'excludeCharacterCategories' => [
         \IntlChar::CHAR_CATEGORY_UNASSIGNED,
         \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR,
@@ -55,4 +54,5 @@ return [
         \IntlChar::PROPERTY_WORD_BREAK,
         \IntlChar::PROPERTY_INVALID_CODE,
     ],
+    'maxFoldRun' => 8,
 ];
