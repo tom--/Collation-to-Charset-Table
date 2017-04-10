@@ -318,6 +318,9 @@ class CollationToCharsetTable
         return $charsetTable;
     }
 
+    /**
+     * Debug array. Write compact format of array to stdout
+     */
     protected static function dbga(array $array, $depth = 1): string
     {
         $values = [];
