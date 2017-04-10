@@ -1,7 +1,7 @@
 Create a custom Sphinx charset_table from a MySQL collation
 =====
 
-Can encode, for example, MySQL utf8mb4_unicode_ci collation as Sphinx charset_table in
+Can encode, for example, MySQL utf8mb4_unicode_ci collation as Sphinx `charset_table` in
 
 - for U+20 thru U+4FF, 11 kB
 - for U+20 thru U+1F9FF, 70 kB
@@ -38,7 +38,7 @@ Display the same charset table but using hex codepoints
 
     ./c2ct hex
 
-Display the same charset table un the human-editable format (see below)
+Display the same charset table in the human-editable format (see below)
 
     ./c2ct editable
 
@@ -46,11 +46,11 @@ The same human-editable format but sorted by codepoint rather than collation
 
     ./c2ct editable -c
 
-Display the same charset table in Sphinx's charset_table configuration format
+Display the charset table in Sphinx's `charset_table` configuration format
 
     ./c2ct sphinx
 
-Display the same Sphinx charset_table compressed onto fewer lines
+Display the same Sphinx `charset_table` compressed onto fewer lines
 
     ./c2ct compressed
 
@@ -69,12 +69,12 @@ Save your customized charset table for use in a Sphinx config file
 
     ./c2ct compressed - < my_charset_table.txt > my_charset_table.conf
 
-But you shouldn't use that charset_table until you understand what it represents,
-There's no such thing as a standard charset_table. You need a charset_table
+But you shouldn't use that *charset_table.conf* until you understand what it represents,
+There's no such thing as a standard charset table. You need a charset table
 that's appropriate for *your* application. Customize it—don't criticize it.
 
 
-Matching Sphinx charset_table to a MySQL collation
+Matching Sphinx `charset_table` to a MySQL collation
 ----
 
 If your app is localized to English then perhaps you can live with
@@ -104,11 +104,11 @@ Automation
 
 Unicode has expanded over the years. We now use utf8mb4 encoding and collate with
 utf8mb4_unicode_ci, which is all pretty sophisticated. I don't have the patience
-or understanding to author a charset_table that covers even a fraction of
+or understanding to author a `charset_table` that covers even a fraction of
 Unicode. But the utf8mb4_unicode_ci encapsulates much of the understanding I need.
 
 The core idea is to "dump" the collation as a set of folding rules and convert
-that to Sphinx charset_table format. Put all the characters you care about in a
+that to Sphinx `charset_table` format. Put all the characters you care about in a
 `CHAR(1)` column with that collation and then
 
 ```sql
@@ -225,7 +225,7 @@ format sorted by codepoint
     ß	df
     ÷	f7
 
-The first codepoint in a lines codepoint list is encoded in the charset_table.
+The first codepoint in a line's codepoint list is encoded in the Sphinx `charset_table`.
 Subsequent codepoints in the list (if there are any) are mapped to the first
 codepoint in the list.
 
@@ -233,7 +233,7 @@ For example, take the line
 
     Y y Ý ý ÿ	59 79 dd fd ff
 
-It will be encoded into these Sphinx charset_table rules:
+It will be encoded into these Sphinx `charset_table` rules:
 
     Y, y->Y, U+DD->Y, U+FD->Y, U+FF->Y
 
