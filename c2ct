@@ -31,7 +31,7 @@ switch ($command) {
     default:
         echo <<<TXT
 Usage:
-    $script { newtable [-v] | editable [-c] [-d] | { hex | utf8 | sphinx | compressed [-d] [-] } }
+    $script { newtable [-v] | editable [-c] [-d] | { hex | utf8 | sphinx | compressed } [-d] [-] }
 
 Commands:
     - newtable : Populate the DB charset table with characters
