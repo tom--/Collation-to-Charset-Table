@@ -1,8 +1,13 @@
 Create a custom Sphinx charset_table from a MySQL collation
 =====
 
-> Requires PHP 7, ICU, Intl extension, and a MySQL-like DB server. Take care
-that your Unicode versions in both PHP and the DB server are up-to-date.
+Can encode, for example, MySQL utf8mb4_unicode_ci collation as Sphinx charset_table in
+
+- for U+20 thru U+4FF, 11 kB
+- for U+20 thru U+1F9FF, 70 kB
+
+Requires PHP 7, ICU, Intl extension, and a MySQL-like DB server. Take care
+that your Unicode versions in both PHP and MySQL are up-to-date.
 
 
 Quick start: Using the `c2ct` command
