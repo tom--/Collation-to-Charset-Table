@@ -318,6 +318,21 @@ class CollationToCharsetTable
         return $charsetTable;
     }
 
+    protected static function dbga(array $array, $depth = 1): string
+    {
+        $values = [];
+        foreach ($array as $value) {
+            $values[] = !is_array($value) ? (string) $value : static::dbga($value, $depth + 1);
+        }
+        $string = '[' . implode(', ', $values) . ']';
+        if ($depth > 1) {
+            return $string;
+        }
+        echo $string . "\n\n";
+
+        return '';
+    }
+
     /**
      * Get blended array of strays, stray range, and folds from the internal charset table.
      * @return array of integer codepoints organized into elements
@@ -331,24 +346,26 @@ class CollationToCharsetTable
 
         $strays = $this->arrayRuns($strays);
 
-        if ($this->maxFoldRun !== null && $this->maxFoldRun > 2) {
+        if (is_int($this->maxFoldRun) && $this->maxFoldRun > 2) {
             foreach ($folds as $foldTo => $folded) {
                 list($newFold, $newStrays) = $this->arrayRuns($folded, $this->maxFoldRun, false);
 
-                $merged= false;
                 if (empty($newFold)) {
                     unset($folds[$foldTo]);
-                    if (count($newStrays) === 1 && $newStrays[0][0] === $foldTo + 1) {
-                        $pos = array_search($foldTo, $strays, true);
-                        if ($pos !== false) {
-                            $merged = true;
-                            $strays[$pos] = [$foldTo, $newStrays[0][1]];
-                        }
+                } else {
+                    $folds[$foldTo] = $newFold;
+                }
+
+                if (isset($newStrays[0][0]) && $newStrays[0][0] === $foldTo + 1) {
+                    $pos = array_search($foldTo, $strays, true);
+                    if ($pos !== false) {
+                        $strays[$pos] = [$foldTo, $newStrays[0][1]];
+                        array_shift($newStrays);
                     }
                 }
 
-                if (!$merged) {
-                    $strays = array_merge($strays, $newStrays);
+                foreach ($newStrays as $newStray) {
+                    $strays = array_merge($strays, [$newStray]);
                 }
             }
 
@@ -489,7 +506,7 @@ class CollationToCharsetTable
     /**
      * Format a folding rule as a string of maps in Sphinx charset_table format: CP1->CP2, CP1->CP2, ...
      */
-    protected function sphinxFolds(array $folds, string $separator = ','): string
+    protected function sphinxFolds(array $folds, string $separator = ', '): string
     {
         return implode($separator, array_map(function ($fold) use ($folds) {
             return $this->sphinxCp($fold) . '->' . $this->sphinxCp($folds[0]);
@@ -603,8 +620,8 @@ class CollationToCharsetTable
     public function getUtf8(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-            return \IntlChar::chr($codepoint);
-        })) . "\n";
+                return \IntlChar::chr($codepoint);
+            })) . "\n";
     }
 
     /**
@@ -613,8 +630,8 @@ class CollationToCharsetTable
     public function getHex(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-            return sprintf('%02X', $codepoint);
-        })) . "\n";
+                return sprintf('%02X', $codepoint);
+            })) . "\n";
     }
 
     /**
