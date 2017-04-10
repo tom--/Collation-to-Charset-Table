@@ -108,7 +108,7 @@ or understanding to author a `charset_table` that covers even a fraction of
 Unicode. But the utf8mb4_unicode_ci encapsulates much of the understanding I need.
 
 The core idea is to "dump" the collation as a set of folding rules and convert
-that to Sphinx `charset_table` format. Put all the characters you care about in a
+them to Sphinx `charset_table` format. Put all the characters you care about in a
 `CHAR(1)` column with that collation and then
 
 ```sql
@@ -237,7 +237,7 @@ It will be encoded into these Sphinx `charset_table` rules:
 
     Y, y->Y, U+DD->Y, U+FD->Y, U+FF->Y
 
-So Sphinx will encode `Y` as a search keyword character ane will map the other four (`y Ý ý ÿ`) to `Y`
+So Sphinx will encode `Y` as a search keyword character and will map the other four (`y Ý ý ÿ`) to `Y`
 
 Note: `c2ct` does run encoding so that you probably won't find `Y` in the output. Something like
 this, in which `Y` is part of the `A..Z` range, is more typical of output from `c2ct sphinx`.
@@ -293,7 +293,7 @@ Where utf8_general_ci was OK a decade ago, utf8mb4_unicode_ci is *de rigueur* no
 
 The Collation-to-Charset-Table tools got more complex to help me cope.
 
-But I don't really know what I'm doing and I could use your help, of you have any to give.
+But I don't really know what I'm doing and I could use your help, if you have any to give.
 
 If you have any comments or thoughts, please use the Github issue tracker. Even if you
 just used the tool I'd like to hear about it:
