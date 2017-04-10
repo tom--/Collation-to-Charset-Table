@@ -181,9 +181,14 @@ class CollationToCharsetTable
             \IntlChar::CHAR_CATEGORY_CHAR_CATEGORY_COUNT => 'CHAR_CATEGORY_COUNT',
         ];
 
+        $insTotal = 0;
+        $excTotal = 0;
         foreach ($this->collateRanges as $range) {
             list($from, $to) = $range;
 
+            printf("Range %05X to %05X, %d codepoints", $from, $to, $to - $from + 1);
+            $insRange = 0;
+            $excludedRange = 0;
             foreach (range($from, $to) as $codepoint) {
                 // Exclude 0x00-0x1F control characters and 0x20 space regardless of input ranges.
                 // (because \t, \n, and space are formatting characters for the editable table.)
@@ -227,9 +232,17 @@ class CollationToCharsetTable
                             exit(1);
                         }
                     }
+                    $insRange += 1;
+                    $insTotal += 1;
+                } else {
+                    $excludedRange += 1;
+                    $excTotal += 1;
                 }
+
             }
+            printf(". Inserted %d, excluded %d\n", $insRange, $to - $from + 1 - $insRange);
         }
+        printf("Done\nTotal %d codepoints, inserted %d, excluded %d\n", $insTotal + $excTotal, $insTotal, $excTotal);
     }
 
     /**
@@ -623,8 +636,8 @@ class CollationToCharsetTable
     public function getUtf8(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-                return \IntlChar::chr($codepoint);
-            })) . "\n";
+            return \IntlChar::chr($codepoint);
+        })) . "\n";
     }
 
     /**
@@ -633,8 +646,8 @@ class CollationToCharsetTable
     public function getHex(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-                return sprintf('%02X', $codepoint);
-            })) . "\n";
+            return sprintf('%02X', $codepoint);
+        })) . "\n";
     }
 
     /**
