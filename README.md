@@ -1,10 +1,21 @@
 Create a custom Sphinx charset_table from a MySQL collation
 =====
 
-Can encode, for example, MySQL utf8mb4_unicode_ci collation as Sphinx `charset_table` in
+[Collation-to-Charset-Table](https://github.com/tom--/Collation-to-Charset-Table) can
 
-- for U+20 thru U+4FF, 11 kB
-- for U+20 thru U+1F9FF, 70 kB
+- extract a charset table from a MySQL collation
+
+- exclude characters based on Unicode property/category
+
+- write/read a human-editable charset table file for your customization
+
+- human-readable displays of your custom charset table
+
+- encode your custom charset table into Sphinx charset_table config
+
+- encode U+20 to U+4FF of utf8mb4_unicode_ci into 11 KiB of charset_table
+
+- or U+20 to U+1FFFF (82,765 codepoints) into 70 KiB
 
 Requires PHP 7, ICU, Intl extension, and a MySQL-like DB server. Take care
 that your Unicode versions in both PHP and MySQL are up-to-date.
