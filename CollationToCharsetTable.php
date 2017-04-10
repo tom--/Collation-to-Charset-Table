@@ -254,13 +254,15 @@ class CollationToCharsetTable
     {
         $this->charsetTable = [];
         foreach (explode("\n", $editableTable) as $line) {
-            list($characters, $codepoints) = explode("\t", $line);
-            $this->charsetTable[] = [
-                explode(' ', $characters),
-                array_map(function ($value) use ($hex) {
-                    return (int)($hex ? hexdec($value) : $value);
-                }, explode(' ', $codepoints)),
-            ];
+            if (!empty(trim($line))) {
+                list($characters, $codepoints) = explode("\t", $line);
+                $this->charsetTable[] = [
+                    explode(' ', $characters),
+                    array_map(function ($value) use ($hex) {
+                        return (int)($hex ? hexdec($value) : $value);
+                    }, explode(' ', $codepoints)),
+                ];
+            }
         }
     }
 
