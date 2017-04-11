@@ -105,7 +105,7 @@ MySQL's *_general_ci or *_unicode_ci collations so
 can find "Motörhead". I want Sphinx to be able to find the same records so it
 needs to match characters with roughly the same rules as the MySQL collation.
 
-If a user enters the letter D I want Sphinx to match it to any of the characters
+If a user enters the letter *D* I want Sphinx to match it to any of the characters
 that MySQL would match it to, i.e.
 
     D d Ď ď ͩ ᴰ ᵈ Ḋ ḋ Ḍ ḍ Ḏ ḏ Ḑ ḑ Ḓ ḓ
@@ -138,26 +138,17 @@ The `c2ct newtable` command creates a MySQL table and populates it using
 - excluding characters with Unicode character properties listed in
 `CollationToCharsetTable::$excludeCharacterProperties`
 
-The 4 output commands `hex`, `utf8`, `sphinx`, and `compressed` will process
+The four output commands `hex`, `utf8`, `sphinx`, and `compressed` will process
 and output a charset table in their respective formats based on the data in the
 DB table or based on an input text file in the human-editable format
 described below. The `editable` command outputs the data from the DB table in
 the same human-editable format.
 
-## Customize
-
-Among other things you can
-
-- customize the main Unicode ranges
-- customize the exclusions based on character categories and properties
-- fine-tune the collation-based charset-table by manual editing
-
-For more detail, read the doc-blocks of `CollationToCharsetTable` public properties.
 
 Editable file format
 ----
 
-Each line (terminated by newline) represents a set of characters that the collate together.
+Each line (terminated by newline) represents a set of characters that collate together.
 Each line has two parts separated by a tab character. Before the tab is a (space-separated)
 list of utf8 characters and after the tab is the corresponding (space-separated) list of hex
 codepoints.
@@ -236,21 +227,24 @@ format sorted by codepoint
     ß	df
     ÷	f7
 
-The first codepoint in a line's codepoint list is encoded in the Sphinx `charset_table`.
-Subsequent codepoints in the list (if there are any) are mapped to the first
-codepoint in the list.
+When `c2ct` reads such a file, it declares the first codepoint in each line's codepoint list
+as [allowed](http://sphinxsearch.com/docs/current.html#conf-charset-table)
+ and maps any subsequent codepoints in the list
+to the first one. `c2ct` parses the hex codepoints of the input,
+not the UTF-8 characters, which are there for your reference while editing.
 
-For example, take the line
+For example, `c2ct` encodes the line
 
     Y y Ý ý ÿ	59 79 dd fd ff
 
-It will be encoded into these Sphinx `charset_table` rules:
+into these Sphinx `charset_table` rules
 
     Y, y->Y, U+DD->Y, U+FD->Y, U+FF->Y
 
-So Sphinx will encode `Y` as a search keyword character and will map the other four (`y Ý ý ÿ`) to `Y`
+So Sphinx will encode `Y` in indexed documents as a search keyword character and will map the
+other four (`y Ý ý ÿ`) to `Y`
 
-Note: `c2ct` does run encoding so that you probably won't find `Y` in the output. Something like
+Note: `c2ct` does run encoding so you probably won't find `Y` in your output. Something like
 this, in which `Y` is part of the `A..Z` range, is more typical of output from `c2ct sphinx`.
 
     $,
@@ -266,6 +260,13 @@ this, in which `Y` is part of the `A..Z` range, is more typical of output from `
        c->C,U+C7->C,U+E7->C,
     ...
 
+## Customize
+
+Among other things you can
+
+- customize the input [Unicode ranges](https://github.com/tom--/Collation-to-Charset-Table/blob/master/CollationToCharsetTable.php#L54-L75)
+- customize the exclusions based on character [categories] and properties](https://github.com/tom--/Collation-to-Charset-Table/blob/master/CollationToCharsetTable.php#L96-L106)
+- fine-tune the collation-based charset-table by manual editing
 
 Fine tuning the human-readable file requires understanding of your app, how you expect
 people to use it, and what outputs they might expect relative to their inputs.
@@ -277,7 +278,6 @@ name appears as O’Brien (with RIGHT SINGLE QUOTATION MARK instead) so I add th
 same line as APOSTROPHE thus
 
     ' ’     27 2019
-
 
 > **NOTE** When `c2ct` reads a human-editable charset table, it parses the hex codepoints,
 not the UTF-8 characters, which are only present to assist while editing.

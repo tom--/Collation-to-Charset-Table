@@ -253,16 +253,39 @@ class CollationToCharsetTable
     public function parseCharsetTable(string $editableTable, $hex = true)
     {
         $this->charsetTable = [];
-        foreach (explode("\n", $editableTable) as $line) {
-            if (!empty(trim($line))) {
-                list($characters, $codepoints) = explode("\t", $line);
-                $this->charsetTable[] = [
-                    explode(' ', $characters),
-                    array_map(function ($value) use ($hex) {
-                        return (int)($hex ? hexdec($value) : $value);
-                    }, explode(' ', $codepoints)),
-                ];
+        foreach (explode("\n", $editableTable) as $i => $line) {
+            if (empty(trim($line))) {
+                // silently skip blank lines and lines with only spaces
+                continue;
             }
+
+            $characters = [];
+
+            // find the first tab on the line, if there is one
+            $pos = mb_strpos($line, "\t", 0, 'UTF-8');
+            if ($pos !== false) {
+                // extract the substr before the tab
+                list($before, $line) = explode("\t", $line, 2);
+                // put any space-separated characters in $characters (they are ignored anyway)
+                $characters = preg_split('{ +}', trim(mb_substr($before, $pos + 1, null, 'UTF-8')));
+            }
+
+            // strip comments from end of line
+            $line = preg_replace('{#.*$}', '', $line);
+
+            // extract one or more space-separated hex numbers. U+ or 0x etc prefixes not allowed
+            preg_match('{([0-9A-F]{1,8})(?: +([0-9A-F]{1,8}))*}i', $line, $matches);
+            if (empty($matches)) {
+                // mention lines with no codepoints
+                fwrite(STDERR, 'No codepoints found on line ' . ($i + 1) . "\n");
+
+                continue;
+            }
+
+            array_shift($matches);
+            $codepoints = array_map('hexdec', $matches);
+
+            $this->charsetTable[] = [$characters, $codepoints];
         }
     }
 
