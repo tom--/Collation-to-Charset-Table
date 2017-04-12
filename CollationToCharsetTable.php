@@ -63,7 +63,7 @@ class CollationToCharsetTable
      * range in $ranges then it is a separator.
      *
      * 2. Exclude on the basis of Unicode character category and/or property.
-     * @see $excludeProperties and $excludeCharacterCategories below.
+     * @see $excludeBinaryProperties and $excludeCharacterCategories below.
      *
      * 3. Manually edit the output of collation_2_charset_table-1.php before feeding
      * it to collation_2_charset_table-1.php.
@@ -103,7 +103,7 @@ class CollationToCharsetTable
      * @var int[] Unicode character properties to exclude. See the IntlChar::PROPERTY_*
      * constants in https://secure.php.net/manual/en/class.intlchar.php#intlchar.constants.property-alphabetic
      */
-    public $excludeProperties = [];
+    public $excludeBinaryProperties = [];
 
     /** @var array [[[character, ...], [codepoint, ...]], ...] */
     private $charsetTable;
@@ -147,6 +147,7 @@ class CollationToCharsetTable
             "INSERT IGNORE INTO `$this->dbName`.`$this->tableName` 
             (`dec`, `mychar`, `hex`) VALUES (:dec, :chr, :hex)"
         );
+
         $categoryLookup = [
             0 => 'UNASSIGNED/GENERAL_OTHER_TYPES',
             \IntlChar::CHAR_CATEGORY_UPPERCASE_LETTER => 'UPPERCASE_LETTER',
@@ -186,7 +187,7 @@ class CollationToCharsetTable
         foreach ($this->collateRanges as $range) {
             list($from, $to) = $range;
 
-            printf("Range %05X to %05X, %d codepoints", $from, $to, $to - $from + 1);
+            printf("Range %05X to %05X, %d codepoints\n", $from, $to, $to - $from + 1);
             $insRange = 0;
             $excludedRange = 0;
             foreach (range($from, $to) as $codepoint) {
@@ -198,7 +199,7 @@ class CollationToCharsetTable
                 ) {
                     $exclude = "Category ($charType) {$categoryLookup[$charType]}";
                 }
-                foreach ($this->excludeProperties as $property) {
+                foreach ($this->excludeBinaryProperties as $property) {
                     if (\IntlChar::hasBinaryProperty($codepoint, $property)) {
                         $exclude = "Property ($property) " . \IntlChar::getPropertyName($property);
 
@@ -239,7 +240,7 @@ class CollationToCharsetTable
                     $excTotal += 1;
                 }
             }
-            printf(". Inserted %d, excluded %d\n", $insRange, $to - $from + 1 - $insRange);
+            printf("Inserted %d, excluded %d\n", $insRange, $to - $from + 1 - $insRange);
         }
         printf("Done\nTotal %d codepoints, inserted %d, excluded %d\n", $insTotal + $excTotal, $insTotal, $excTotal);
     }
