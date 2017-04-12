@@ -238,7 +238,6 @@ class CollationToCharsetTable
                     $excludedRange += 1;
                     $excTotal += 1;
                 }
-
             }
             printf(". Inserted %d, excluded %d\n", $insRange, $to - $from + 1 - $insRange);
         }
@@ -252,6 +251,10 @@ class CollationToCharsetTable
      */
     public function parseCharsetTable(string $editableTable, $hex = true)
     {
+        $pattern = $hex
+            ? '{(?<!\S)[0-9A-F]{1,8}(?: +[0-9A-F]{1,8})*(?!\S)}i'
+            : '{(?<!\S)[0-9]{1,10}(?: +[0-9]{1,10})*(?!\S)}';
+
         $this->charsetTable = [];
         foreach (explode("\n", $editableTable) as $i => $line) {
             if (empty(trim($line))) {
@@ -273,17 +276,15 @@ class CollationToCharsetTable
             // strip comments from end of line
             $line = preg_replace('{#.*$}', '', $line);
 
-            // extract one or more space-separated hex numbers. U+ or 0x etc prefixes not allowed
-            preg_match('{([0-9A-F]{1,8})(?: +([0-9A-F]{1,8}))*}i', $line, $matches);
-            if (empty($matches)) {
+            // extract a list of one or more space-separated decimal or hex numbers
+            if (!preg_match($pattern, $line, $matches)) {
                 // mention lines with no codepoints
                 fwrite(STDERR, 'No codepoints found on line ' . ($i + 1) . "\n");
 
                 continue;
             }
 
-            array_shift($matches);
-            $codepoints = array_map('hexdec', $matches);
+            $codepoints = array_map($hex ? 'hexdec' : 'intval', preg_split('{ +}', $matches[0]));
 
             $this->charsetTable[] = [$characters, $codepoints];
         }
@@ -363,7 +364,7 @@ class CollationToCharsetTable
     {
         $values = [];
         foreach ($array as $value) {
-            $values[] = !is_array($value) ? (string) $value : static::dbga($value, $depth + 1);
+            $values[] = !is_array($value) ? (string)$value : static::dbga($value, $depth + 1);
         }
         $string = '[' . implode(', ', $values) . ']';
         if ($depth > 1) {
@@ -661,8 +662,8 @@ class CollationToCharsetTable
     public function getUtf8(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-            return \IntlChar::chr($codepoint);
-        })) . "\n";
+                return \IntlChar::chr($codepoint);
+            })) . "\n";
     }
 
     /**
@@ -671,8 +672,8 @@ class CollationToCharsetTable
     public function getHex(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-            return sprintf('%02X', $codepoint);
-        })) . "\n";
+                return sprintf('%02X', $codepoint);
+            })) . "\n";
     }
 
     /**
