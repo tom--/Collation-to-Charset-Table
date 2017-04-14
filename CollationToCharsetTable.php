@@ -52,7 +52,7 @@ class CollationToCharsetTable
     public $pdoPass = '';
 
     /**
-     * Codepoint ranges to include in the Sphinx charset_table.
+     * Codepoint ranges to collate/fold and include in the Sphinx charset_table.
      *
      * See http://sphinxsearch.com/docs/current.html#conf-charset-table
      *
@@ -62,20 +62,29 @@ class CollationToCharsetTable
      * 1. Excluded their codepoints from $ranges, e.g. if U+20 doesn't appear in any
      * range in $ranges then it is a separator.
      *
-     * 2. Exclude on the basis of Unicode character category and/or property.
+     * 2. Exclude on the basis of Unicode general category and/or property.
      * @see $excludeBinaryProperties and $excludeCharacterCategories below.
      *
-     * 3. Manually edit the output of collation_2_charset_table-1.php before feeding
-     * it to collation_2_charset_table-1.php.
+     * 3. Save the output from `c2ct editable`, manually edit it, and use that as input
+     * to the display commands.
      *
      * 4. Manually edit the output Sphinx charset_table.
      *
-     * @var string[] Array of hex ranges as strings
+     * @var array[] Each element is a range [[start, end], ...] where start and end
+     * are intgers, e.g. [[0x0000, 0x017F], [0x0370, 0x08FF]]
      */
     public $collateRanges = [];
 
     /**
-     * @var int Parameter for heuristic shortening of longs strings of single-character
+     * Codepoint ranges to append to the ctarset table without collation/folding.
+     * Avoid overlap with $collatedRanges.
+     *
+     * @var array[] As for $collateRanges
+     */
+    public $appendRanges = [];
+
+    /**
+     * Parameter for heuristic shortening of longs strings of single-character
      * mappings.
      *
      * For example, U+1F600 thru U+1F64F all collate together. Normally this would result
@@ -90,20 +99,27 @@ class CollationToCharsetTable
      * is converted into a stray range, e.g. the above example becomes instead
      *
      *      U+1F600..U+1F64F
+     *
+     * @var int|null
      */
-    public $maxFoldRun = 8;
+    public $maxFoldRun;
 
     /**
      * @var int[] Unicode character categories to exclude. See the IntlChar::CHAR_CATEGORY_*
      * constants in https://secure.php.net/manual/en/intlchar.chartype.php
      */
-    public $excludeCharacterCategories = [];
+    public $excludeGeneralCategories = [];
 
     /**
      * @var int[] Unicode character properties to exclude. See the IntlChar::PROPERTY_*
      * constants in https://secure.php.net/manual/en/class.intlchar.php#intlchar.constants.property-alphabetic
      */
     public $excludeBinaryProperties = [];
+
+    /**
+     * @var bool Exclude characters with any combining property.
+     */
+    public $excludeCombining;
 
     /** @var array [[[character, ...], [codepoint, ...]], ...] */
     private $charsetTable;
@@ -124,8 +140,48 @@ class CollationToCharsetTable
         }
     }
 
+    protected static $generalCategoryNames = [
+        0 => 'UNASSIGNED',
+        \IntlChar::CHAR_CATEGORY_UPPERCASE_LETTER => 'UPPERCASE_LETTER',
+        \IntlChar::CHAR_CATEGORY_LOWERCASE_LETTER => 'LOWERCASE_LETTER',
+        \IntlChar::CHAR_CATEGORY_TITLECASE_LETTER => 'TITLECASE_LETTER',
+        \IntlChar::CHAR_CATEGORY_MODIFIER_LETTER => 'MODIFIER_LETTER',
+        \IntlChar::CHAR_CATEGORY_OTHER_LETTER => 'OTHER_LETTER',
+        \IntlChar::CHAR_CATEGORY_NON_SPACING_MARK => 'NON_SPACING_MARK',
+        \IntlChar::CHAR_CATEGORY_ENCLOSING_MARK => 'ENCLOSING_MARK',
+        \IntlChar::CHAR_CATEGORY_COMBINING_SPACING_MARK => 'COMBINING_SPACING_MARK',
+        \IntlChar::CHAR_CATEGORY_DECIMAL_DIGIT_NUMBER => 'DECIMAL_DIGIT_NUMBER',
+        \IntlChar::CHAR_CATEGORY_LETTER_NUMBER => 'LETTER_NUMBER',
+        \IntlChar::CHAR_CATEGORY_OTHER_NUMBER => 'OTHER_NUMBER',
+        \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR => 'SPACE_SEPARATOR',
+        \IntlChar::CHAR_CATEGORY_LINE_SEPARATOR => 'LINE_SEPARATOR',
+        \IntlChar::CHAR_CATEGORY_PARAGRAPH_SEPARATOR => 'PARAGRAPH_SEPARATOR',
+        \IntlChar::CHAR_CATEGORY_CONTROL_CHAR => 'CONTROL_CHAR',
+        \IntlChar::CHAR_CATEGORY_FORMAT_CHAR => 'FORMAT_CHAR',
+        \IntlChar::CHAR_CATEGORY_PRIVATE_USE_CHAR => 'PRIVATE_USE_CHAR',
+        \IntlChar::CHAR_CATEGORY_SURROGATE => 'SURROGATE',
+        \IntlChar::CHAR_CATEGORY_DASH_PUNCTUATION => 'DASH_PUNCTUATION',
+        \IntlChar::CHAR_CATEGORY_START_PUNCTUATION => 'START_PUNCTUATION',
+        \IntlChar::CHAR_CATEGORY_END_PUNCTUATION => 'END_PUNCTUATION',
+        \IntlChar::CHAR_CATEGORY_CONNECTOR_PUNCTUATION => 'CONNECTOR_PUNCTUATION',
+        \IntlChar::CHAR_CATEGORY_OTHER_PUNCTUATION => 'OTHER_PUNCTUATION',
+        \IntlChar::CHAR_CATEGORY_MATH_SYMBOL => 'MATH_SYMBOL',
+        \IntlChar::CHAR_CATEGORY_CURRENCY_SYMBOL => 'CURRENCY_SYMBOL',
+        \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL => 'MODIFIER_SYMBOL',
+        \IntlChar::CHAR_CATEGORY_OTHER_SYMBOL => 'OTHER_SYMBOL',
+        \IntlChar::CHAR_CATEGORY_INITIAL_PUNCTUATION => 'INITIAL_PUNCTUATION',
+        \IntlChar::CHAR_CATEGORY_FINAL_PUNCTUATION => 'FINAL_PUNCTUATION',
+        \IntlChar::CHAR_CATEGORY_CHAR_CATEGORY_COUNT => 'CHAR_CATEGORY_COUNT',
+    ];
+
+    protected static function getGeneralCategoryName(int $category): string
+    {
+        return static::$generalCategoryNames[$category] ?? "Warning: Unknown general category: $category";
+    }
+
     /**
      * Populate the MySQL DB table according to configured ranges and exclusions.
+     * @return void
      */
     public function createDbCharsetTable(bool $verbose = false)
     {
@@ -148,39 +204,7 @@ class CollationToCharsetTable
             (`dec`, `mychar`, `hex`) VALUES (:dec, :chr, :hex)"
         );
 
-        $categoryLookup = [
-            0 => 'UNASSIGNED/GENERAL_OTHER_TYPES',
-            \IntlChar::CHAR_CATEGORY_UPPERCASE_LETTER => 'UPPERCASE_LETTER',
-            \IntlChar::CHAR_CATEGORY_LOWERCASE_LETTER => 'LOWERCASE_LETTER',
-            \IntlChar::CHAR_CATEGORY_TITLECASE_LETTER => 'TITLECASE_LETTER',
-            \IntlChar::CHAR_CATEGORY_MODIFIER_LETTER => 'MODIFIER_LETTER',
-            \IntlChar::CHAR_CATEGORY_OTHER_LETTER => 'OTHER_LETTER',
-            \IntlChar::CHAR_CATEGORY_NON_SPACING_MARK => 'NON_SPACING_MARK',
-            \IntlChar::CHAR_CATEGORY_ENCLOSING_MARK => 'ENCLOSING_MARK',
-            \IntlChar::CHAR_CATEGORY_COMBINING_SPACING_MARK => 'COMBINING_SPACING_MARK',
-            \IntlChar::CHAR_CATEGORY_DECIMAL_DIGIT_NUMBER => 'DECIMAL_DIGIT_NUMBER',
-            \IntlChar::CHAR_CATEGORY_LETTER_NUMBER => 'LETTER_NUMBER',
-            \IntlChar::CHAR_CATEGORY_OTHER_NUMBER => 'OTHER_NUMBER',
-            \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR => 'SPACE_SEPARATOR',
-            \IntlChar::CHAR_CATEGORY_LINE_SEPARATOR => 'LINE_SEPARATOR',
-            \IntlChar::CHAR_CATEGORY_PARAGRAPH_SEPARATOR => 'PARAGRAPH_SEPARATOR',
-            \IntlChar::CHAR_CATEGORY_CONTROL_CHAR => 'CONTROL_CHAR',
-            \IntlChar::CHAR_CATEGORY_FORMAT_CHAR => 'FORMAT_CHAR',
-            \IntlChar::CHAR_CATEGORY_PRIVATE_USE_CHAR => 'PRIVATE_USE_CHAR',
-            \IntlChar::CHAR_CATEGORY_SURROGATE => 'SURROGATE',
-            \IntlChar::CHAR_CATEGORY_DASH_PUNCTUATION => 'DASH_PUNCTUATION',
-            \IntlChar::CHAR_CATEGORY_START_PUNCTUATION => 'START_PUNCTUATION',
-            \IntlChar::CHAR_CATEGORY_END_PUNCTUATION => 'END_PUNCTUATION',
-            \IntlChar::CHAR_CATEGORY_CONNECTOR_PUNCTUATION => 'CONNECTOR_PUNCTUATION',
-            \IntlChar::CHAR_CATEGORY_OTHER_PUNCTUATION => 'OTHER_PUNCTUATION',
-            \IntlChar::CHAR_CATEGORY_MATH_SYMBOL => 'MATH_SYMBOL',
-            \IntlChar::CHAR_CATEGORY_CURRENCY_SYMBOL => 'CURRENCY_SYMBOL',
-            \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL => 'MODIFIER_SYMBOL',
-            \IntlChar::CHAR_CATEGORY_OTHER_SYMBOL => 'OTHER_SYMBOL',
-            \IntlChar::CHAR_CATEGORY_INITIAL_PUNCTUATION => 'INITIAL_PUNCTUATION',
-            \IntlChar::CHAR_CATEGORY_FINAL_PUNCTUATION => 'FINAL_PUNCTUATION',
-            \IntlChar::CHAR_CATEGORY_CHAR_CATEGORY_COUNT => 'CHAR_CATEGORY_COUNT',
-        ];
+        echo 'PHP ' . \IntlChar::class . " Unicode version " . implode('.', \IntlChar::getUnicodeVersion()) . "\n";
 
         $insTotal = 0;
         $excTotal = 0;
@@ -193,27 +217,43 @@ class CollationToCharsetTable
             foreach (range($from, $to) as $codepoint) {
                 // Exclude 0x00-0x1F control characters and 0x20 space regardless of input ranges.
                 // (because \t, \n, and space are formatting characters for the editable table.)
-                $charType = \IntlChar::charType($codepoint);
                 $exclude = null;
-                if ($codepoint <= 32 || in_array($charType, $this->excludeCharacterCategories, true)
-                ) {
-                    $exclude = "Category ($charType) {$categoryLookup[$charType]}";
-                }
-                foreach ($this->excludeBinaryProperties as $property) {
-                    if (\IntlChar::hasBinaryProperty($codepoint, $property)) {
-                        $exclude = "Property ($property) " . \IntlChar::getPropertyName($property);
 
-                        break;
+                if (!$exclude && !\IntlChar::isdefined($codepoint)) {
+                    $exclude = 'Undefined';
+                }
+
+                if (!$exclude && \IntlChar::isISOControl($codepoint)) {
+                    $exclude = 'Control character';
+                }
+
+                if (!$exclude && $codepoint === 32) {
+                    $exclude = 'Reserved by ' . self::class;
+                }
+
+                if (!$exclude) {
+                    $charType = \IntlChar::charType($codepoint);
+                    if (in_array($charType, $this->excludeGeneralCategories)) {
+                        $exclude = "General Category ($charType) " . static::getGeneralCategoryName($charType);
+                    }
+                }
+
+                if (!$exclude) {
+                    foreach ($this->excludeBinaryProperties as $property) {
+                        if (\IntlChar::hasBinaryProperty($codepoint, $property)) {
+                            $exclude = "Property ($property) " . \IntlChar::getPropertyName($property);
+                            break;
+                        }
                     }
                 }
 
                 if ($verbose) {
                     printf(
                         "%-8s%04X    %-40s %s\n",
-                        \IntlChar::chr($codepoint),
+                        \IntlChar::isISOControl($codepoint) ? ' ' : \IntlChar::chr($codepoint),
                         $codepoint,
                         \IntlChar::charName($codepoint),
-                        $exclude ? "Excluded on $exclude" : ''
+                        $exclude ? " ; Exclude $exclude" : ''
                     );
                 }
 
@@ -417,7 +457,19 @@ class CollationToCharsetTable
             });
         }
 
-        return $this->blendCharsetRules($strays, $folds);
+        $blended = [];
+        foreach ($strays as $item) {
+            $blended[] = $item;
+            foreach (is_array($item) ? range($item[0], $item[1]) : [$item] as $codepoint) {
+                if (isset($folds[$codepoint])) {
+                    $blended[] = [$codepoint, $folds[$codepoint]];
+                }
+            }
+        }
+
+        $blended = array_merge($blended, $this->appendRanges);
+
+        return $blended;
     }
 
     /**
@@ -477,27 +529,6 @@ class CollationToCharsetTable
         }
 
         return $merged ? $runs[0] : $runs;
-    }
-
-    /**
-     * Blend into one array the given ranged stray codepoints and folding rules.
-     * @param $rangedCodepoints array of codepoints and [from, to] ranges
-     * @param $folds array of folds as [foldTo => [fold, ...], ...]
-     * @return array Same format as @see getBlendedRules()
-     */
-    protected function blendCharsetRules(array $rangedCodepoints, array $folds): array
-    {
-        $blended = [];
-        foreach ($rangedCodepoints as $item) {
-            $blended[] = $item;
-            foreach (is_array($item) ? range($item[0], $item[1]) : [$item] as $codepoint) {
-                if (isset($folds[$codepoint])) {
-                    $blended[] = [$codepoint, $folds[$codepoint]];
-                }
-            }
-        }
-
-        return $blended;
     }
 
     /**
@@ -663,8 +694,8 @@ class CollationToCharsetTable
     public function getUtf8(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-                return \IntlChar::chr($codepoint);
-            })) . "\n";
+            return \IntlChar::chr($codepoint);
+        })) . "\n";
     }
 
     /**
@@ -673,8 +704,8 @@ class CollationToCharsetTable
     public function getHex(): string
     {
         return implode("\n", $this->displayTable($this->getBlendedRules(), function ($codepoint) {
-                return sprintf('%02X', $codepoint);
-            })) . "\n";
+            return sprintf('%02X', $codepoint);
+        })) . "\n";
     }
 
     /**
