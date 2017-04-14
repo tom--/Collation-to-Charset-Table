@@ -38,16 +38,16 @@ Commands:
     - editable : Write the DB charset table as human-editable charset table to stdout
     - hex | utf8 | sphinx | compressed : Read a raw charset table from either stdin 
       or the DB table, process it, and write it to stdout
-         - hex        as hex codepoints reading by a human 
-         - utf8       in UTF-8 characters reading by a human
+         - hex        as hex codepoints for reading by a human 
+         - utf8       in UTF-8 characters for reading by a human
          - sphinx     as a Sphinx charset_table structured for easier reading by a human
-         - compressed compressed Sphinx charset_table compressed onto fewer lines
+         - compressed Sphinx charset_table compressed onto fewer lines
 
 Options:
-    -v  Write verbose information about each codepoint in the configured ranges
+    -v  Write verbose information about each codepoint in the collated ranges
     -c  Sort output table by codepoint rather than collation
     -d  Codepoints in decimal rather than hex
-    -   Read a human-editable charset table from stdin instead of the MySQL collation table
+    -   Read the charset table from stdin instead of the DB table
 
 TXT;
         exit(1);
