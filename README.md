@@ -11,9 +11,9 @@ Create a custom Sphinx charset_table from a MySQL collation
 
 - human-readable displays of your custom charset table
 
-- encode your custom charset table into Sphinx charset_table config
+- encode your custom charset table into Sphinx `charset_table` config
 
-- encode U+20 to U+4FF of utf8mb4_unicode_ci into 11 KiB of charset_table
+- encode U+20 to U+4FF of utf8mb4_unicode_ci into 11 KiB of `charset_table`
 
 - or U+20 to U+1FFFF (82,765 codepoints) into 70 KiB
 
@@ -84,6 +84,16 @@ But you shouldn't use that *charset_table.conf* until you understand what it rep
 There's no such thing as a standard charset table. You need a charset table
 that's appropriate for *your* application. Customize it—don't criticize it.
 
+Example output
+----
+
+Examples of all five output files for U+0000..U+024F using the default config
+
+- [example_editable.txt](example_editable.txt)
+- [example_utf8.txt](example_utf8.txt)
+- [example_hex.txt](example_hex.txt)
+- [example_sphinx.conf](example_sphinx.conf)
+- [example_compressed.conf](example_compressed.conf)
 
 Matching Sphinx `charset_table` to a MySQL collation
 ----
@@ -129,20 +139,18 @@ SELECT GROUP_CONCAT(mychar) FROM mytable GROUP BY mychar;
 Processing
 ----
 
-The `c2ct newtable` command creates a MySQL table and populates it using
+The `c2ct newtable` command creates a MySQL table and populates it with
+the codepoint ranges you configure excluding
 
-- the codepoint ranges given in `CollationToCharsetTable::$collateRanges`
-- excluding U+00 thru U+20 inclusive
-- excluding characters with Unicode general categories listed in
-`CollationToCharsetTable::$excludeCharacterCategories`
-- excluding characters with Unicode character properties listed in
-`CollationToCharsetTable::$excludeCharacterProperties`
+- undefined codepoints, control characters, and SPACE
+- characters with Unicode general categories you configure
+- characters with Unicode character properties you configure
 
-The four output commands `hex`, `utf8`, `sphinx`, and `compressed` will process
-and output a charset table in their respective formats based on the data in the
+The four output commands `hex`, `utf8`, `sphinx`, and `compressed` process
+and write out a charset table in their respective formats based on the data in the
 DB table or based on an input text file in the human-editable format
 described below. The `editable` command outputs the data from the DB table in
-the same human-editable format.
+the human-editable format.
 
 
 Editable file format
@@ -230,7 +238,7 @@ format sorted by codepoint
 When `c2ct` reads such a file, it declares the first codepoint in each line's codepoint list
 as [allowed](http://sphinxsearch.com/docs/current.html#conf-charset-table)
  and maps any subsequent codepoints in the list
-to the first one. `c2ct` parses the hex codepoints of the input,
+to the first one. `c2ct` parses the hex codepoint list on each line,
 not the UTF-8 characters, which are there for your reference while editing.
 
 For example, `c2ct` encodes the line
@@ -260,6 +268,30 @@ this, in which `Y` is part of the `A..Z` range, is more typical of output from `
        c->C,U+C7->C,U+E7->C,
     ...
 
+### Editing tricks
+
+ `./c2ct` scans the part of each line after the tab for a valid space-separated codepoint list and
+ignores everything else. So you may 1) keep but invalidate a codepoint (list), 2) add comments, for
+example this editable charset table
+
+    Z z	5a 7a
+    ^	-5e             # behaves as separator
+    ' ` ’	27 60 2019      # fold these to apostrophe
+    |	-7c             # behaves as separator
+    Þ þ	-de -fe         # confuses users
+    ¢	a2
+
+writes the following in which the 'No codepoints found' are to stderr
+
+    No codepoints found on line 2
+    No codepoints found on line 4
+    No codepoints found on line 5
+    ',
+       `->', U+2019->',
+    Z,
+       z->Z,
+    U+A2
+
 ## Customize
 
 Among other things you can
@@ -278,9 +310,6 @@ name appears as O’Brien (with RIGHT SINGLE QUOTATION MARK instead) so I add th
 same line as APOSTROPHE thus
 
     ' ’     27 2019
-
-> **NOTE** When `c2ct` reads a human-editable charset table, it parses the hex codepoints,
-not the UTF-8 characters, which are only present to assist while editing.
 
 
 Normal Form C
@@ -302,9 +331,11 @@ on this road. People are really using a lot of Unicode characters now. We have t
 the Supplementary Multilingual Plane now, where emoticons and other fun stuff live.
 Where utf8_general_ci was OK a decade ago, utf8mb4_unicode_ci is *de rigueur* now.
 
-The Collation-to-Charset-Table tools got more complex to help me cope.
+Collation-to-Charset-Table is more complex now to help me cope. I need the new features
+to analyze and understand collations and to help automate the exclusions I need.
 
-But I don't really know what I'm doing and I could use your help, if you have any to give.
+But I don't really know what I'm doing (I no internationalization expert) and I could use
+your help, if you have any to give.
 
 If you have any comments or thoughts, please use the Github issue tracker. Even if you
 just used the tool I'd like to hear about it:
