@@ -538,7 +538,9 @@ class CollationToCharsetTable
      */
     protected function sphinxCp(int $codepoint)
     {
-        return $codepoint > 32 && $codepoint < 127 ? chr($codepoint) : sprintf('U+%02X', $codepoint);
+        return $codepoint > 32 && $codepoint < 127
+            ? ([0x2E => 'U+2E', 0x2C => 'U+2C', 0x23 => 'U+23'][$codepoint] ?? chr($codepoint))
+            : sprintf('U+%02X', $codepoint);
     }
 
     /**
@@ -714,7 +716,7 @@ class CollationToCharsetTable
      */
     public function getSphinx(): string
     {
-        return implode(",\n", $this->readableSphinxTable($this->getBlendedRules())) . "\n";
+        return implode(",\\\n", $this->readableSphinxTable($this->getBlendedRules())) . "\n";
     }
 
     /**
@@ -722,6 +724,6 @@ class CollationToCharsetTable
      */
     public function getCompressed(): string
     {
-        return implode("\n", $this->compressSphinxTable($this->getBlendedRules())) . "\n";
+        return implode("\\\n", $this->compressSphinxTable($this->getBlendedRules())) . "\n";
     }
 }
