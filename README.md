@@ -334,7 +334,7 @@ Where utf8_general_ci was OK a decade ago, utf8mb4_unicode_ci is *de rigueur* no
 Collation-to-Charset-Table is more complex now to help me cope. I need the new features
 to analyze and understand collations and to help automate the exclusions I need.
 
-But I don't really know what I'm doing (I no internationalization expert) and I could use
+But I don't really know what I'm doing (I am no internationalization expert) and I could use
 your help, if you have any to give.
 
 If you have any comments or thoughts, please use the Github issue tracker. Even if you
