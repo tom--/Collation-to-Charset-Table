@@ -297,7 +297,7 @@ writes the following in which the 'No codepoints found' are to stderr
 Among other things you can
 
 - customize the input [Unicode ranges](https://github.com/tom--/Collation-to-Charset-Table/blob/master/CollationToCharsetTable.php#L54-L75)
-- customize the exclusions based on character [categories] and properties](https://github.com/tom--/Collation-to-Charset-Table/blob/master/CollationToCharsetTable.php#L96-L106)
+- customize the exclusions based on character [categories](https://github.com/tom--/Collation-to-Charset-Table/blob/master/CollationToCharsetTable.php#L107-L111) and [properties](https://github.com/tom--/Collation-to-Charset-Table/blob/master/CollationToCharsetTable.php#L113-L117)
 - fine-tune the collation-based charset-table by manual editing
 
 Fine tuning the human-readable file requires understanding of your app, how you expect
