@@ -214,6 +214,7 @@ class CollationToCharsetTable
             printf("Range %05X to %05X, %d codepoints\n", $from, $to, $to - $from + 1);
             $insRange = 0;
             $excludedRange = 0;
+            $db->beginTransaction();
             foreach (range($from, $to) as $codepoint) {
                 // Exclude 0x00-0x1F control characters and 0x20 space regardless of input ranges.
                 // (because \t, \n, and space are formatting characters for the editable table.)
@@ -280,6 +281,7 @@ class CollationToCharsetTable
                     $excTotal += 1;
                 }
             }
+            $db->commit();
             printf("Inserted %d, excluded %d\n", $insRange, $to - $from + 1 - $insRange);
         }
         printf("Done\nTotal %d codepoints, inserted %d, excluded %d\n", $insTotal + $excTotal, $insTotal, $excTotal);
