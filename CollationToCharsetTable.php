@@ -200,7 +200,7 @@ class CollationToCharsetTable
         );
 
         $statement = $db->prepare(
-            "INSERT IGNORE INTO `$this->dbName`.`$this->tableName` 
+            "INSERT IGNORE INTO `$this->dbName`.`$this->tableName`
             (`dec`, `mychar`, `hex`) VALUES (:dec, :chr, :hex)"
         );
 
@@ -214,71 +214,21 @@ class CollationToCharsetTable
             printf("Range %05X to %05X, %d codepoints\n", $from, $to, $to - $from + 1);
             $insRange = 0;
             $excludedRange = 0;
-            foreach (range($from, $to) as $codepoint) {
-                // Exclude 0x00-0x1F control characters and 0x20 space regardless of input ranges.
-                // (because \t, \n, and space are formatting characters for the editable table.)
-                $exclude = null;
+            try {
+                $db->beginTransaction();
 
-                if (!$exclude && !\IntlChar::isdefined($codepoint)) {
-                    $exclude = 'Undefined';
+                list($insRange, $excludedRange) = $this->insertRange($db, $statement, $from, $to, $verbose);
+                $insTotal += $insRange;
+                $excTotal += $excludedRange;
+
+                $db->commit();
+            } catch (\Exception $exception) {
+                $db->rollBack();
+
+                if ($exception->getMessage()) {
+                    echo $exception->getMessage() . "\n";
                 }
-
-                if (!$exclude && \IntlChar::isISOControl($codepoint)) {
-                    $exclude = 'Control character';
-                }
-
-                if (!$exclude && $codepoint === 32) {
-                    $exclude = 'Reserved by ' . self::class;
-                }
-
-                if (!$exclude) {
-                    $charType = \IntlChar::charType($codepoint);
-                    if (in_array($charType, $this->excludeGeneralCategories)) {
-                        $exclude = "General Category ($charType) " . static::getGeneralCategoryName($charType);
-                    }
-                }
-
-                if (!$exclude) {
-                    foreach ($this->excludeBinaryProperties as $property) {
-                        if (\IntlChar::hasBinaryProperty($codepoint, $property)) {
-                            $exclude = "Property ($property) " . \IntlChar::getPropertyName($property);
-                            break;
-                        }
-                    }
-                }
-
-                if ($verbose) {
-                    printf(
-                        "%-8s%04X    %-40s %s\n",
-                        \IntlChar::isISOControl($codepoint) ? ' ' : \IntlChar::chr($codepoint),
-                        $codepoint,
-                        \IntlChar::charName($codepoint),
-                        $exclude ? " ; Exclude $exclude" : ''
-                    );
-                }
-
-                if ($exclude === null) {
-                    $statement->execute([
-                        ':dec' => $codepoint,
-                        ':chr' => \IntlChar::chr($codepoint),
-                        ':hex' => sprintf('%X', $codepoint),
-                    ]);
-
-                    $warnings = $db->query('show warnings;');
-                    if ($warnings) {
-                        foreach ($warnings as $warning) {
-                            var_dump($warning);
-                            echo "exiting\n";
-
-                            exit(1);
-                        }
-                    }
-                    $insRange += 1;
-                    $insTotal += 1;
-                } else {
-                    $excludedRange += 1;
-                    $excTotal += 1;
-                }
+                exit(1);
             }
             printf("Inserted %d, excluded %d\n", $insRange, $to - $from + 1 - $insRange);
         }
@@ -334,7 +284,7 @@ class CollationToCharsetTable
     /**
      * Return the internal charset table as previously parsed or from the DB charset table
      * @return array of sets of equally collated characters each set represented as
-     * an array [characters, codepoints], where caracters is an array of utf8 chars
+     * an array [characters, codepoints], where characters is an array of utf8 chars
      * and codepoints is an array of integer codepoints, i.e.
      *
      *      [
@@ -366,10 +316,10 @@ class CollationToCharsetTable
         //	  x: a space-separated list of UTF-8 characters
         //	  y: a space-separated list of hex unicode codepoints
         $rows = $db->query(
-            "SELECT 
+            "SELECT
                 GROUP_CONCAT(`mychar` ORDER BY `dec` ASC SEPARATOR 0x01) AS `characters`,
                 GROUP_CONCAT(`dec` ORDER BY `dec` ASC SEPARATOR 0x01) AS `codepoints`
-                FROM `$this->dbName`.`$this->tableName` 
+                FROM `$this->dbName`.`$this->tableName`
                 GROUP BY `mychar`;"
         );
 
@@ -396,6 +346,87 @@ class CollationToCharsetTable
         }
 
         return $charsetTable;
+    }
+
+    /**
+     * Insert a range of code points.
+     */
+    protected function insertRange(
+        \PDO $db,
+        \PDOStatement $statement,
+        int $from,
+        int $to,
+        bool $verbose
+    ): array {
+        $insRange = 0;
+        $excludedRange = 0;
+
+        foreach (range($from, $to) as $codepoint) {
+            // Exclude 0x00-0x1F control characters and 0x20 space regardless of input ranges.
+            // (because \t, \n, and space are formatting characters for the editable table.)
+            $exclude = null;
+
+            if (!$exclude && !\IntlChar::isdefined($codepoint)) {
+                $exclude = 'Undefined';
+            }
+
+            if (!$exclude && \IntlChar::isISOControl($codepoint)) {
+                $exclude = 'Control character';
+            }
+
+            if (!$exclude && $codepoint === 32) {
+                $exclude = 'Reserved by ' . self::class;
+            }
+
+            if (!$exclude) {
+                $charType = \IntlChar::charType($codepoint);
+                if (in_array($charType, $this->excludeGeneralCategories)) {
+                    $exclude = "General Category ($charType) " . static::getGeneralCategoryName($charType);
+                }
+            }
+
+            if (!$exclude) {
+                foreach ($this->excludeBinaryProperties as $property) {
+                    if (\IntlChar::hasBinaryProperty($codepoint, $property)) {
+                        $exclude = "Property ($property) " . \IntlChar::getPropertyName($property);
+                        break;
+                    }
+                }
+            }
+
+            if ($verbose) {
+                printf(
+                    "%-8s%04X    %-40s %s\n",
+                    \IntlChar::isISOControl($codepoint) ? ' ' : \IntlChar::chr($codepoint),
+                    $codepoint,
+                    \IntlChar::charName($codepoint),
+                    $exclude ? " ; Exclude $exclude" : ''
+                );
+            }
+
+            if ($exclude === null) {
+                $statement->execute([
+                    ':dec' => $codepoint,
+                    ':chr' => \IntlChar::chr($codepoint),
+                    ':hex' => sprintf('%X', $codepoint),
+                ]);
+
+                $warnings = $db->query('show warnings;');
+                if ($warnings) {
+                    foreach ($warnings as $warning) {
+                        var_dump($warning);
+                        echo "exiting\n";
+
+                        throw new \Exception();
+                    }
+                }
+                $insRange += 1;
+            } else {
+                $excludedRange += 1;
+            }
+        }
+
+        return [$insRange, $excludedRange];
     }
 
     /**
