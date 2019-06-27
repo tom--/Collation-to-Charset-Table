@@ -131,12 +131,16 @@ class CollationToCharsetTable
     {
         foreach ($config as $name => $value) {
             try {
-                (new \ReflectionProperty(static::class, $name))->setValue($this, $value);
-            } catch (\ReflectionException $exception) {
+                $configProperty = new \ReflectionProperty(static::class, $name);
+                if (!$configProperty->isPublic() || $configProperty->isStatic()) {
+                    throw new \Exception();
+                }
+            } catch (\Exception $exception) {
                 echo "There is no configuration property named '$name'. Check your config\n";
 
                 exit(1);
             }
+            $configProperty->setValue($this, $value);
         }
     }
 
