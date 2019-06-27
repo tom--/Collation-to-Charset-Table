@@ -210,26 +210,20 @@ class CollationToCharsetTable
         $excTotal = 0;
         foreach ($this->collateRanges as $range) {
             list($from, $to) = $range;
-
             printf("Range %05X to %05X, %d codepoints\n", $from, $to, $to - $from + 1);
-            $insRange = 0;
-            $excludedRange = 0;
-            try {
-                $db->beginTransaction();
 
+            $db->beginTransaction();
+            try {
                 list($insRange, $excludedRange) = $this->insertRange($db, $statement, $from, $to, $verbose);
                 $insTotal += $insRange;
                 $excTotal += $excludedRange;
-
-                $db->commit();
             } catch (\Exception $exception) {
                 $db->rollBack();
 
-                if ($exception->getMessage()) {
-                    echo $exception->getMessage() . "\n";
-                }
-                exit(1);
+                throw $exception;
             }
+            $db->commit();
+
             printf("Inserted %d, excluded %d\n", $insRange, $to - $from + 1 - $insRange);
         }
         printf("Done\nTotal %d codepoints, inserted %d, excluded %d\n", $insTotal + $excTotal, $insTotal, $excTotal);
@@ -415,7 +409,6 @@ class CollationToCharsetTable
                 if ($warnings) {
                     foreach ($warnings as $warning) {
                         var_dump($warning);
-                        echo "exiting\n";
 
                         throw new \Exception();
                     }
