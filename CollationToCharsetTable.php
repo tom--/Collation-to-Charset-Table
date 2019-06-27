@@ -186,6 +186,7 @@ class CollationToCharsetTable
     /**
      * Populate the MySQL DB table according to configured ranges and exclusions.
      * @return void
+     * @throws \Exception
      */
     public function createDbCharsetTable(bool $verbose = false)
     {
@@ -348,6 +349,7 @@ class CollationToCharsetTable
 
     /**
      * Insert a range of code points.
+     * @throws \Exception
      */
     protected function insertRange(
         \PDO $db,
@@ -547,6 +549,7 @@ class CollationToCharsetTable
         $runs = $merged ? [[]] : [[], []];
         for ($i = 0; $i < $n; $i += 1) {
             for ($j = 0; $i + $j < $n && $array[$i + $j] === $array[$i] + $j; $j += 1) {
+                // fixme why is this loop?
             };
             if ($j >= $minRun) {
                 $runs[$merged ? 0 : 1][] = [$array[$i], $array[$i + $j - 1]];
@@ -712,6 +715,7 @@ class CollationToCharsetTable
             if ($hex) {
                 $codepoints = array_map('dechex', $codepoints);
             }
+            /** @noinspection PhpParamsInspection */
             $lines[] = implode(' ', $characters) . "\t" . implode(' ', $codepoints);
         }
 
